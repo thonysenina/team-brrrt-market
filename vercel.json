@@ -1,0 +1,7 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/" }],
+  "env": {
+    "REACT_APP_SUPABASE_URL": "@supabase_url",
+    "REACT_APP_SUPABASE_ANON_KEY": "@supabase_anon_key"
+  }
+}

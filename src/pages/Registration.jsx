@@ -1,0 +1,369 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase, logAudit } from '../lib/supabase';
+import toast from 'react-hot-toast';
+import { ShoppingBag, Plus, Trash2, ChevronRight, ChevronLeft, Check } from 'lucide-react';
+
+const STEPS = ['Event', 'Profile', 'Inventory', 'Equipment', 'Review'];
+
+export default function Registration() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Step 0 — Event
+  const [eventId, setEventId] = useState('');
+  const [event, setEvent] = useState(null);
+
+  // Step 1 — Profile
+  const [fullName, setFullName] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [description, setDescription] = useState('');
+  const [merchantPct, setMerchantPct] = useState(50);
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+
+  // Step 2 — Inventory
+  const [items, setItems] = useState([{ name: '', description: '', price: '', quantity: '' }]);
+
+  // Step 3 — Equipment
+  const [equipment, setEquipment] = useState([{ name: '', quantity: 1 }]);
+
+  const lookupEvent = async () => {
+    if (!eventId.trim()) return;
+    setLoading(true);
+    const { data, error } = await supabase.from('fm_events').select('*').eq('id', eventId.trim()).eq('is_active', true).single();
+    setLoading(false);
+    if (error || !data) { toast.error('Event not found or inactive'); return; }
+    setEvent(data);
+    setMerchantPct(data.max_merchant_pct);
+    setStep(1);
+  };
+
+  const addItem = () => setItems([...items, { name: '', description: '', price: '', quantity: '' }]);
+  const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
+  const updateItem = (i, field, val) => {
+    const updated = [...items];
+    updated[i][field] = val;
+    setItems(updated);
+  };
+
+  const addEquip = () => setEquipment([...equipment, { name: '', quantity: 1 }]);
+  const removeEquip = (i) => setEquipment(equipment.filter((_, idx) => idx !== i));
+  const updateEquip = (i, field, val) => {
+    const updated = [...equipment];
+    updated[i][field] = val;
+    setEquipment(updated);
+  };
+
+  const validateStep = () => {
+    if (step === 1) {
+      if (!fullName.trim() || !shopName.trim()) { toast.error('Full name and shop name are required'); return false; }
+      if (pin.length < 4) { toast.error('PIN must be at least 4 characters'); return false; }
+      if (pin !== pinConfirm) { toast.error('PINs do not match'); return false; }
+      if (merchantPct < event.min_merchant_pct || merchantPct > event.max_merchant_pct) {
+        toast.error(`Merchant share must be between ${event.min_merchant_pct}% and ${event.max_merchant_pct}%`);
+        return false;
+      }
+    }
+    if (step === 2) {
+      for (const item of items) {
+        if (!item.name.trim() || !item.price || !item.quantity) {
+          toast.error('All item fields are required'); return false;
+        }
+        if (parseFloat(item.price) <= 0 || parseInt(item.quantity) <= 0) {
+          toast.error('Price and quantity must be positive'); return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!validateStep()) return;
+    setStep(s => s + 1);
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      // Check duplicate shop name in event
+      const { data: existing } = await supabase.from('fm_merchants').select('id').eq('event_id', event.id).eq('shop_name', shopName.trim()).single();
+      if (existing) { toast.error('A booth with this name already exists for this event'); setLoading(false); return; }
+
+      const { data: merchant, error: mErr } = await supabase.from('fm_merchants').insert({
+        event_id: event.id,
+        full_name: fullName.trim(),
+        shop_name: shopName.trim(),
+        description: description.trim(),
+        merchant_pct: merchantPct,
+        pin: pin.trim(),
+        status: 'pending',
+      }).select().single();
+
+      if (mErr) throw mErr;
+
+      // Insert inventory
+      const validItems = items.filter(i => i.name.trim());
+      if (validItems.length) {
+        await supabase.from('fm_items').insert(validItems.map(i => ({
+          merchant_id: merchant.id,
+          name: i.name.trim(),
+          description: i.description.trim(),
+          price: parseFloat(i.price),
+          quantity: parseInt(i.quantity),
+          quantity_sold: 0,
+        })));
+      }
+
+      // Insert equipment
+      const validEquip = equipment.filter(e => e.name.trim());
+      if (validEquip.length) {
+        await supabase.from('fm_equipment').insert(validEquip.map(e => ({
+          merchant_id: merchant.id,
+          name: e.name.trim(),
+          quantity: parseInt(e.quantity) || 1,
+        })));
+      }
+
+      await logAudit(event.id, merchant.id, 'MERCHANT_REGISTERED', { shop_name: shopName });
+
+      toast.success('Application submitted! Await organizer approval.');
+      navigate('/');
+    } catch (err) {
+      toast.error('Submission failed: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem 1rem' }}>
+      <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at 30% 40%, rgba(90,156,240,0.06) 0%, transparent 60%)', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', maxWidth: 620, position: 'relative', zIndex: 1 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 12 }}>
+            <ShoppingBag size={20} color="var(--accent)" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '1.4rem' }}>Merchant Registration</h1>
+            {event && <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>{event.name}</p>}
+          </div>
+        </div>
+
+        {/* Step progress */}
+        {step > 0 && (
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', alignItems: 'center' }}>
+            {STEPS.slice(1).map((s, i) => (
+              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700,
+                    background: i + 1 < step ? 'var(--green)' : i + 1 === step ? 'var(--accent)' : 'var(--bg-4)',
+                    color: i + 1 <= step ? '#000' : 'var(--text-3)',
+                    flexShrink: 0,
+                  }}>
+                    {i + 1 < step ? <Check size={12} /> : i + 1}
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: i + 1 === step ? 'var(--text)' : 'var(--text-3)', fontWeight: i + 1 === step ? 600 : 400 }}>{s}</span>
+                  {i < STEPS.length - 2 && <div style={{ flex: 1, height: 1, background: i + 1 < step ? 'var(--green)' : 'var(--border)', marginLeft: '0.4rem' }} />}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="card animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+          {/* STEP 0 — Event lookup */}
+          {step === 0 && (
+            <>
+              <h2 style={{ fontSize: '1.1rem' }}>Find Your Event</h2>
+              <div className="form-group">
+                <label className="form-label">Event ID</label>
+                <input placeholder="Paste the Event ID from your organizer" value={eventId} onChange={e => setEventId(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && lookupEvent()} />
+              </div>
+              <button className="btn btn-primary btn-full" onClick={lookupEvent} disabled={loading}>
+                {loading ? 'Searching…' : 'Find Event'}
+              </button>
+              <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'center' }} onClick={() => navigate('/')}>
+                ← Back to login
+              </button>
+            </>
+          )}
+
+          {/* STEP 1 — Profile */}
+          {step === 1 && (
+            <>
+              <h2 style={{ fontSize: '1.1rem' }}>Your Profile</h2>
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input placeholder="Jane Dela Cruz" value={fullName} onChange={e => setFullName(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Booth / Shop Name *</label>
+                  <input placeholder="Jane's Vintage Corner" value={shopName} onChange={e => setShopName(e.target.value)} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Booth Description</label>
+                <textarea rows={3} placeholder="Tell us about your booth…" value={description} onChange={e => setDescription(e.target.value)} style={{ resize: 'vertical' }} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Your Income Share: <strong style={{ color: 'var(--accent)' }}>{merchantPct}%</strong></label>
+                <input type="range" min={event?.min_merchant_pct || 20} max={event?.max_merchant_pct || 50} value={merchantPct}
+                  onChange={e => setMerchantPct(parseInt(e.target.value))}
+                  style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer', background: 'transparent', border: 'none', padding: '0.25rem 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-3)' }}>
+                  <span>{event?.min_merchant_pct}% (min)</span>
+                  <span style={{ color: 'var(--text-2)' }}>Organizer gets <strong style={{ color: 'var(--blue)' }}>{100 - merchantPct}%</strong></span>
+                  <span>{event?.max_merchant_pct}% (max)</span>
+                </div>
+              </div>
+
+              <div className="divider" />
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Set Your PIN *</label>
+                  <input type="password" placeholder="Min. 4 characters" value={pin} onChange={e => setPin(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirm PIN *</label>
+                  <input type="password" placeholder="Repeat PIN" value={pinConfirm} onChange={e => setPinConfirm(e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* STEP 2 — Inventory */}
+          {step === 2 && (
+            <>
+              <h2 style={{ fontSize: '1.1rem' }}>Your Merchandise</h2>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: -8 }}>List all items you plan to sell. You can update inventory later from your dashboard.</p>
+
+              {items.map((item, i) => (
+                <div key={i} style={{ background: 'var(--bg-3)', borderRadius: 'var(--radius-sm)', padding: '1rem', position: 'relative', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-3)', fontFamily: 'var(--font-display)' }}>ITEM {i + 1}</span>
+                    {items.length > 1 && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeItem(i)} style={{ color: 'var(--red)' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Item Name *</label>
+                      <input placeholder="Vintage lamp" value={item.name} onChange={e => updateItem(i, 'name', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Description</label>
+                      <input placeholder="Optional" value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Price (₱) *</label>
+                      <input type="number" min="0.01" step="0.01" placeholder="250.00" value={item.price} onChange={e => updateItem(i, 'price', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Quantity *</label>
+                      <input type="number" min="1" placeholder="5" value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button className="btn btn-secondary" onClick={addItem} style={{ alignSelf: 'flex-start' }}>
+                <Plus size={15} /> Add Item
+              </button>
+            </>
+          )}
+
+          {/* STEP 3 — Equipment */}
+          {step === 3 && (
+            <>
+              <h2 style={{ fontSize: '1.1rem' }}>Booth Equipment</h2>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: -8 }}>List everything you plan to bring to your booth (racks, tables, monitors, etc.)</p>
+
+              {equipment.map((eq, i) => (
+                <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ flex: 3 }}>
+                    {i === 0 && <label className="form-label">Equipment Name</label>}
+                    <input placeholder="Clothing rack, folding table…" value={eq.name} onChange={e => updateEquip(i, 'name', e.target.value)} />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    {i === 0 && <label className="form-label">Qty</label>}
+                    <input type="number" min="1" value={eq.quantity} onChange={e => updateEquip(i, 'quantity', e.target.value)} />
+                  </div>
+                  {equipment.length > 1 && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => removeEquip(i)} style={{ color: 'var(--red)', marginBottom: 2 }}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <button className="btn btn-secondary" onClick={addEquip} style={{ alignSelf: 'flex-start' }}>
+                <Plus size={15} /> Add Equipment
+              </button>
+            </>
+          )}
+
+          {/* STEP 4 — Review */}
+          {step === 4 && (
+            <>
+              <h2 style={{ fontSize: '1.1rem' }}>Review & Submit</h2>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <ReviewRow label="Event" value={event?.name} />
+                <ReviewRow label="Full Name" value={fullName} />
+                <ReviewRow label="Booth Name" value={shopName} />
+                <ReviewRow label="Description" value={description || '—'} />
+                <ReviewRow label="Income Split" value={`You ${merchantPct}% / Organizer ${100 - merchantPct}%`} accent />
+                <ReviewRow label="Merchandise Items" value={`${items.filter(i => i.name).length} item(s)`} />
+                <ReviewRow label="Equipment" value={`${equipment.filter(e => e.name).length} item(s)`} />
+              </div>
+
+              <div style={{ padding: '0.875rem', background: 'var(--accent-dim)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent-border)', fontSize: '0.8125rem', color: 'var(--text-2)' }}>
+                ℹ️ Your application will be reviewed by the organizer before you can access the POS system.
+              </div>
+            </>
+          )}
+
+          {/* Navigation */}
+          {step > 0 && (
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>
+                <ChevronLeft size={15} /> Back
+              </button>
+              {step < 4 ? (
+                <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={handleNext}>
+                  Next <ChevronRight size={15} />
+                </button>
+              ) : (
+                <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={handleSubmit} disabled={loading}>
+                  {loading ? 'Submitting…' : <><Check size={15} /> Submit Application</>}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value, accent }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>{label}</span>
+      <span style={{ fontSize: '0.875rem', fontWeight: accent ? 700 : 500, color: accent ? 'var(--accent)' : 'var(--text)' }}>{value}</span>
+    </div>
+  );
+}
