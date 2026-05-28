@@ -159,3 +159,26 @@ public/
 - The `.env` file is gitignored — never commit your keys.
 - For production, consider enabling Supabase Auth for stronger security.
 - The undo window for sales is **10 minutes** from transaction time.
+
+---
+
+## Photo Support (Migration)
+
+If you already ran the original `schema.sql`, run this additional file to enable item photos:
+
+1. Go to Supabase → **SQL Editor**
+2. Paste and run the contents of `supabase/add_photo_support.sql`
+
+This will:
+- Add a `photo_url` column to the `fm_items` table
+- Create a public `item-photos` storage bucket
+- Set storage access policies
+
+### What photo support adds
+
+- **Registration** — merchants can upload a photo per item during signup
+- **Inventory tab** — photo upload/change/remove per item card; click the photo area to change while editing
+- **POS grid** — item cards show photos for quick visual identification at checkout
+- **Overview dashboard** — photos appear in the top sellers list and inventory snapshot table
+
+Photos are stored in Supabase Storage and limited to 5MB per image. Supported formats: JPG, PNG, WebP, GIF.
