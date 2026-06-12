@@ -13,37 +13,3 @@ export async function logAudit(eventId, merchantId, action, details = {}) {
     details,
   });
 }
-
-/**
- * Upload a photo file to Supabase Storage.
- * Returns the public URL on success, or null on failure.
- */
-export async function uploadItemPhoto(file, merchantId) {
-  const ext = file.name.split('.').pop();
-  const path = `${merchantId}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage
-    .from('item-photos')
-    .upload(path, file, { upsert: true });
-  if (error) {
-    console.error('Photo upload error:', error.message);
-    return null;
-  }
-  const { data } = supabase.storage.from('item-photos').getPublicUrl(path);
-  return data.publicUrl;
-}
-
-/**
- * Delete a photo from Supabase Storage given its public URL.
- */
-export async function deleteItemPhoto(publicUrl) {
-  if (!publicUrl) return;
-  try {
-    const url = new URL(publicUrl);
-    // path is everything after /object/public/item-photos/
-    const parts = url.pathname.split('/item-photos/');
-    if (parts.length < 2) return;
-    await supabase.storage.from('item-photos').remove([parts[1]]);
-  } catch (e) {
-    console.error('Photo delete error:', e);
-  }
-}
