@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, logAudit, uploadItemPhoto } from '../lib/supabase';
+import { supabase, logAudit, uploadItemPhoto, prepareImageFile } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { ShoppingBag, Plus, Trash2, ChevronRight, ChevronLeft, Check, Upload, Image } from 'lucide-react';
 
@@ -43,12 +43,13 @@ export default function Registration() {
     setItems(updated);
   };
 
-  const handleItemPhoto = (i, file) => {
+  const handleItemPhoto = async (i, file) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
+    const { file: prepared, previewUrl } = await prepareImageFile(file);
     const updated = [...items];
-    updated[i].photoFile = file;
-    updated[i].photoPreview = URL.createObjectURL(file);
+    updated[i].photoFile = prepared;
+    updated[i].photoPreview = previewUrl;
     setItems(updated);
   };
 

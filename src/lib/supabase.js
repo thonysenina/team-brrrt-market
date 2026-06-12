@@ -86,3 +86,18 @@ export async function deleteItemPhoto(publicUrl) {
     console.error('Photo delete error:', e);
   }
 }
+
+/**
+ * Prepares an image file for preview and upload.
+ * If the file is HEIC/HEIF, converts it to JPEG first so the
+ * browser can render the thumbnail immediately.
+ * Returns { file, previewUrl } — always revoke previewUrl when done.
+ */
+export async function prepareImageFile(rawFile) {
+  let file = rawFile;
+  if (isHeic(rawFile)) {
+    file = await convertHeicToJpeg(rawFile);
+  }
+  const previewUrl = URL.createObjectURL(file);
+  return { file, previewUrl };
+}

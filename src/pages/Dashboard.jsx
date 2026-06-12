@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase, logAudit, uploadItemPhoto, deleteItemPhoto } from '../lib/supabase';
+import { supabase, logAudit, uploadItemPhoto, deleteItemPhoto, prepareImageFile } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import {
@@ -390,20 +390,22 @@ function InventoryTab({ items, merchantId, onUpdate }) {
   const newPhotoRef = useRef();
   const editPhotoRef = useRef();
 
-  const handleNewPhoto = (e) => {
+  const handleNewPhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
-    setNewPhotoFile(file);
-    setNewPhotoPreview(URL.createObjectURL(file));
+    const { file: prepared, previewUrl } = await prepareImageFile(file);
+    setNewPhotoFile(prepared);
+    setNewPhotoPreview(previewUrl);
   };
 
-  const handleEditPhoto = (e) => {
+  const handleEditPhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
-    setEditPhotoFile(file);
-    setEditPhotoPreview(URL.createObjectURL(file));
+    const { file: prepared, previewUrl } = await prepareImageFile(file);
+    setEditPhotoFile(prepared);
+    setEditPhotoPreview(previewUrl);
   };
 
   const startEdit = (item) => {
