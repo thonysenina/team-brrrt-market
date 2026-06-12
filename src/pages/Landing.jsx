@@ -107,27 +107,27 @@ export default function Landing() {
 
         {!mode ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }} className="animate-fade">
-            <button className="card" onClick={() => setMode('organizer')} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'border-color 0.2s', border: '1px solid var(--border)' }}
+            <button className="card" onClick={() => setMode('organizer')} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'border-color 0.2s', border: '1px solid var(--border)', color: 'var(--text)' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Lock size={20} color="var(--accent)" />
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>Organizer Access</div>
+                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Organizer Access</div>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: 2 }}>Manage events, merchants & reports</div>
               </div>
               <ArrowRight size={16} style={{ marginLeft: 'auto', color: 'var(--text-3)' }} />
             </button>
 
-            <button className="card" onClick={() => setMode('merchant')} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'border-color 0.2s', border: '1px solid var(--border)' }}
+            <button className="card" onClick={() => setMode('merchant')} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'border-color 0.2s', border: '1px solid var(--border)', color: 'var(--text)' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--blue)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Store size={20} color="var(--blue)" />
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>Merchant Access</div>
+                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Merchant Access</div>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: 2 }}>POS, inventory & sales dashboard</div>
               </div>
               <ArrowRight size={16} style={{ marginLeft: 'auto', color: 'var(--text-3)' }} />

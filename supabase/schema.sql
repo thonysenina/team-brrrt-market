@@ -10,8 +10,6 @@ create table if not exists fm_events (
   event_date date not null,
   location text,
   organizer_pin text not null,
-  min_merchant_pct integer not null default 20,
-  max_merchant_pct integer not null default 50,
   is_active boolean default true,
   created_at timestamptz default now()
 );
@@ -23,7 +21,6 @@ create table if not exists fm_merchants (
   full_name text not null,
   shop_name text not null,
   description text,
-  merchant_pct integer not null check (merchant_pct >= 20 and merchant_pct <= 50),
   pin text not null,
   status text default 'pending' check (status in ('pending','approved','rejected')),
   photo_url text,
