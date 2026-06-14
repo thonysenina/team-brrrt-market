@@ -583,7 +583,7 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
                       )}
                     </div>
                     <div style={{ padding: '0.6rem 0.7rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{item.name}</div>
                       <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--font-display)' }}>₱{parseFloat(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{merchant?.shop_name}</div>
                     </div>
