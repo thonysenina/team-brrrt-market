@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, logAudit, uploadItemPhoto, deleteItemPhoto, prepareImageFile } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
 import toast from 'react-hot-toast';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
-} from 'recharts';
-import {
-  ShoppingCart, Package, TrendingUp, AlertTriangle, Bell,
-  LogOut, Plus, Trash2, Edit2, Check, X, RefreshCw, DollarSign,
-  Archive, Zap, Image, Upload
+  ShoppingCart, Package, TrendingUp, AlertTriangle, Bell, LogOut, Plus, Trash2,
+  Edit2, Check, X, RefreshCw, DollarSign, Archive, Zap, Image, Upload,
+  Sun, Moon, Printer, ArrowUpDown, RotateCcw, BarChart2
 } from 'lucide-react';
 import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
+const AUTO_REFRESH_INTERVAL = 60000; // 60 seconds
+
 export default function Dashboard() {
   const { session, logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const { merchantId, merchant, eventId } = session;
 
   const [tab, setTab] = useState('overview');
@@ -21,9 +23,12 @@ export default function Dashboard() {
   const [sales, setSales] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [lightbox, setLightbox] = useState(null); // { src, alt }
+  const [lightbox, setLightbox] = useState(null);
+  const [showEOD, setShowEOD] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(l => items.length === 0 ? true : l);
     const [itemsRes, salesRes, annRes] = await Promise.all([
       supabase.from('fm_items').select('*').eq('merchant_id', merchantId).order('name'),
       supabase.from('fm_sales').select('*').eq('merchant_id', merchantId).eq('is_undone', false).order('sold_at', { ascending: false }),
@@ -33,11 +38,19 @@ export default function Dashboard() {
     if (salesRes.data) setSales(salesRes.data);
     if (annRes.data) setAnnouncements(annRes.data);
     setLoading(false);
+    setLastRefreshed(new Date());
   }, [merchantId, eventId]);
 
+  // Initial load
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Listen for lightbox trigger events from child components
+  // Auto-refresh every 60s
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(true), AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Lightbox listener
   useEffect(() => {
     const handler = (e) => setLightbox({ src: e.detail.src, alt: e.detail.alt });
     document.addEventListener('open-lightbox', handler);
@@ -45,6 +58,7 @@ export default function Dashboard() {
   }, []);
 
   const grossRevenue = sales.reduce((s, t) => s + parseFloat(t.total_price), 0);
+  const totalUnitsSold = sales.reduce((s, t) => s + t.quantity, 0);
   const outOfStock = items.filter(i => i.quantity - i.quantity_sold <= 0);
   const lowStock = items.filter(i => { const rem = i.quantity - i.quantity_sold; return rem > 0 && rem <= 2; });
   const topItems = [...items].sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 5);
@@ -61,21 +75,22 @@ export default function Dashboard() {
   })();
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: TrendingUp },
-    { id: 'pos', label: 'Point of Sale', icon: ShoppingCart },
-    { id: 'inventory', label: 'Inventory', icon: Package },
-    { id: 'sales', label: 'Sales Log', icon: DollarSign },
+    { id: 'overview',  label: 'Overview',        icon: TrendingUp  },
+    { id: 'pos',       label: 'Point of Sale',    icon: ShoppingCart},
+    { id: 'inventory', label: 'Inventory',        icon: Package     },
+    { id: 'sales',     label: 'Sales Log',        icon: DollarSign  },
   ];
 
   if (loading) return <LoadingScreen />;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
       <header style={{ background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', padding: '0 1.5rem', height: 60, display: 'flex', alignItems: 'center', gap: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
           <ShoppingCart size={20} color="var(--accent)" />
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'var(--font-display)' }}>{merchant.shop_name}</div>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>{merchant.shop_name}</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>{session.eventName}</div>
           </div>
         </div>
@@ -85,9 +100,17 @@ export default function Dashboard() {
             <Bell size={13} /> {announcements.length} announcement{announcements.length > 1 ? 's' : ''}
           </div>
         )}
+        {lastRefreshed && (
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>
+            Updated {lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowEOD(true)} title="End-of-Day Summary"><BarChart2 size={15} /></button>
+        <button className="btn btn-ghost btn-sm" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
         <button className="btn btn-ghost btn-sm" onClick={logout}><LogOut size={15} /></button>
       </header>
 
+      {/* Tab bar */}
       <div style={{ background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', padding: '0 1.5rem', display: 'flex', gap: '0.25rem', overflowX: 'auto' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -100,13 +123,14 @@ export default function Dashboard() {
             <t.icon size={15} /> {t.label}
           </button>
         ))}
-        <button className="btn btn-ghost btn-sm" onClick={fetchData} style={{ marginLeft: 'auto', alignSelf: 'center' }} title="Refresh">
+        <button className="btn btn-ghost btn-sm" onClick={() => fetchData()} style={{ marginLeft: 'auto', alignSelf: 'center' }} title="Refresh">
           <RefreshCw size={14} />
         </button>
       </div>
 
       <main style={{ flex: 1, padding: '1.5rem', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
 
+        {/* OVERVIEW */}
         {tab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade">
             {(outOfStock.length > 0 || lowStock.length > 0 || zeroSales.length > 0) && (
@@ -119,7 +143,7 @@ export default function Dashboard() {
 
             <div className="grid-2">
               <StatCard label="Gross Revenue" value={`₱${grossRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} color="var(--accent)" sub={`${sales.length} transaction${sales.length !== 1 ? 's' : ''}`} />
-              <StatCard label="Total Items Sold" value={sales.reduce((s, t) => s + t.quantity, 0)} color="var(--blue)" sub="Units across all transactions" />
+              <StatCard label="Total Items Sold" value={totalUnitsSold} color="var(--blue)" sub="Units across all transactions" />
             </div>
 
             <div className="grid-2">
@@ -152,7 +176,7 @@ export default function Dashboard() {
                           <span style={{ width: 32, height: 32, borderRadius: 6, background: idx === 0 ? 'var(--accent-dim)' : 'var(--bg-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: idx === 0 ? 'var(--accent)' : 'var(--text-3)', flexShrink: 0 }}>{idx + 1}</span>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.875rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{item.name}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>{item.quantity_sold} sold · ₱{(item.quantity_sold * item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                         </div>
                         <div style={{ width: 60, height: 6, background: 'var(--bg-4)', borderRadius: 99, overflow: 'hidden' }}>
@@ -165,6 +189,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Inventory snapshot */}
             <div className="card">
               <h3 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-2)' }}>Inventory Snapshot</h3>
               <div className="table-wrap">
@@ -182,7 +207,7 @@ export default function Dashboard() {
                               : <div style={{ width: 36, height: 36, background: 'var(--bg-4)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={14} color="var(--text-3)" /></div>
                             }
                           </td>
-                          <td style={{ fontWeight: 500 }}>{item.name}</td>
+                          <td style={{ fontWeight: 500, color: 'var(--text)' }}>{item.name}</td>
                           <td>₱{parseFloat(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                           <td>{remaining}</td>
                           <td>{item.quantity_sold}</td>
@@ -203,7 +228,124 @@ export default function Dashboard() {
         {tab === 'sales' && <SalesLogTab sales={sales} merchantId={merchantId} merchant={merchant} onUpdate={fetchData} />}
 
       </main>
-    {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
+
+      {/* End-of-Day Summary Modal */}
+      {showEOD && (
+        <EODModal
+          sales={sales}
+          items={items}
+          merchant={merchant}
+          grossRevenue={grossRevenue}
+          totalUnitsSold={totalUnitsSold}
+          topItems={topItems}
+          onClose={() => setShowEOD(false)}
+        />
+      )}
+
+      {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
+    </div>
+  );
+}
+
+// ─── END-OF-DAY MODAL ─────────────────────────────────────────────────────────
+function EODModal({ sales, items, merchant, grossRevenue, totalUnitsSold, topItems, onClose }) {
+  const outOfStock = items.filter(i => i.quantity - i.quantity_sold <= 0).length;
+  const peakHour = (() => {
+    const map = {};
+    sales.forEach(s => {
+      const h = new Date(s.sold_at).getHours();
+      map[h] = (map[h] || 0) + parseFloat(s.total_price);
+    });
+    const peak = Object.entries(map).sort((a, b) => b[1] - a[1])[0];
+    return peak ? `${peak[0]}:00` : '—';
+  })();
+
+  const exportCSV = () => {
+    const rows = [['Time', 'Item', 'Qty', 'Unit Price', 'Total', 'Payment']];
+    sales.forEach(s => {
+      rows.push([
+        new Date(s.sold_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        s.item_name, s.quantity, s.unit_price, s.total_price, s.payment_method
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${merchant.shop_name.replace(/\s+/g, '_')}_sales.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => window.print();
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2 style={{ fontSize: '1.1rem' }}>End-of-Day Summary</h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-3)', marginTop: 2 }}>{merchant.shop_name}</p>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Key stats */}
+          <div className="grid-2">
+            <div className="stat-card">
+              <div className="stat-label">Gross Revenue</div>
+              <div className="stat-value" style={{ color: 'var(--accent)', fontSize: '1.5rem' }}>₱{grossRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Units Sold</div>
+              <div className="stat-value" style={{ color: 'var(--blue)', fontSize: '1.5rem' }}>{totalUnitsSold}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Transactions</div>
+              <div className="stat-value" style={{ fontSize: '1.5rem' }}>{sales.length}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Peak Hour</div>
+              <div className="stat-value" style={{ color: 'var(--green)', fontSize: '1.5rem' }}>{peakHour}</div>
+            </div>
+          </div>
+
+          {/* Out of stock count */}
+          {outOfStock > 0 && (
+            <div style={{ padding: '0.75rem', background: 'var(--red-dim)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(240,90,90,0.2)', fontSize: '0.875rem', color: 'var(--red)' }}>
+              ⚠️ {outOfStock} item{outOfStock > 1 ? 's' : ''} sold out today
+            </div>
+          )}
+
+          {/* Top 3 items */}
+          <div>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-3)', marginBottom: '0.75rem', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Top Performers</div>
+            {topItems.filter(i => i.quantity_sold > 0).slice(0, 3).length === 0
+              ? <p style={{ fontSize: '0.875rem', color: 'var(--text-3)' }}>No sales recorded</p>
+              : topItems.filter(i => i.quantity_sold > 0).slice(0, 3).map((item, idx) => (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: idx === 0 ? 'var(--accent-dim)' : 'var(--bg-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800, color: idx === 0 ? 'var(--accent)' : 'var(--text-3)' }}>{idx + 1}</span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>{item.name}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--accent)' }}>₱{(item.quantity_sold * item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>{item.quantity_sold} sold</div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary btn-sm" onClick={exportCSV}><DollarSign size={13} /> Export CSV</button>
+          <button className="btn btn-secondary btn-sm" onClick={handlePrint}><Printer size={13} /> Print</button>
+          <button className="btn btn-primary btn-sm" onClick={onClose}>Done</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -255,14 +397,39 @@ function POSTab({ items, merchantId, merchant, onSale }) {
         await supabase.from('fm_items').update({ quantity_sold: c.quantity_sold + c.qty }).eq('id', c.id);
       }
       await logAudit(merchant.event_id, merchantId, 'SALE', { items: cart.length, total: cartTotal });
-      setLastSale({ items: [...cart], total: cartTotal, payment });
+      setLastSale({ items: [...cart], total: cartTotal, payment, time: new Date() });
       setCart([]);
       toast.success('Sale recorded!');
-      onSale();
+      onSale(true);
     } catch (err) {
       toast.error('Failed: ' + err.message);
     }
     setSubmitting(false);
+  };
+
+  const printReceipt = (sale) => {
+    const win = window.open('', '_blank', 'width=320,height=500');
+    win.document.write(`
+      <html><head><title>Receipt</title><style>
+        body { font-family: monospace; font-size: 13px; padding: 1rem; max-width: 280px; margin: 0 auto; }
+        h2 { font-size: 16px; margin-bottom: 4px; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; margin: 4px 0; }
+        .total { font-weight: bold; font-size: 15px; }
+        .footer { text-align: center; margin-top: 12px; font-size: 11px; color: #666; }
+      </style></head><body>
+        <h2>${merchant.shop_name}</h2>
+        <div style="font-size:11px;color:#666">${sale.time.toLocaleString('en-PH')}</div>
+        <div class="divider"></div>
+        ${sale.items.map(c => `<div class="row"><span>${c.name} × ${c.qty}</span><span>₱${(c.price * c.qty).toFixed(2)}</span></div>`).join('')}
+        <div class="divider"></div>
+        <div class="row total"><span>TOTAL</span><span>₱${sale.total.toFixed(2)}</span></div>
+        <div class="row"><span>Payment</span><span>${sale.payment}</span></div>
+        <div class="footer">Thank you!</div>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
   };
 
   return (
@@ -285,7 +452,6 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                 }}
                   onMouseEnter={e => { if (!inCart) e.currentTarget.style.borderColor = 'var(--border-light)'; }}
                   onMouseLeave={e => { if (!inCart) e.currentTarget.style.borderColor = 'var(--border)'; }}>
-                  {/* Photo area */}
                   <div style={{ width: '100%', height: 110, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
                     {item.photo_url ? (
                       <LightboxTrigger src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%' }}>
@@ -296,18 +462,9 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                         <Image size={28} color="var(--text-3)" style={{ opacity: 0.4 }} />
                       </div>
                     )}
-                    {inCart && (
-                      <div style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: '#000', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800, padding: '0.15rem 0.5rem', fontFamily: 'var(--font-display)' }}>
-                        ×{inCart.qty}
-                      </div>
-                    )}
-                    {remaining <= 2 && (
-                      <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--red)', color: '#fff', borderRadius: 99, fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.45rem' }}>
-                        {remaining} left
-                      </div>
-                    )}
+                    {inCart && <div style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: '#000', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800, padding: '0.15rem 0.5rem', fontFamily: 'var(--font-display)' }}>×{inCart.qty}</div>}
+                    {remaining <= 2 && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--red)', color: '#fff', borderRadius: 99, fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.45rem' }}>{remaining} left</div>}
                   </div>
-                  {/* Info area */}
                   <div style={{ padding: '0.65rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                     <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                     <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--accent)' }}>₱{parseFloat(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
@@ -335,12 +492,12 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                     : <div style={{ width: 32, height: 32, borderRadius: 5, background: 'var(--bg-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Image size={13} color="var(--text-3)" /></div>
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.8125rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{c.name}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>₱{parseFloat(c.price).toFixed(2)} each</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem 0.4rem', fontSize: '1rem' }} onClick={() => updateQty(c.id, -1)}>−</button>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{c.qty}</span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, minWidth: 20, textAlign: 'center', color: 'var(--text)' }}>{c.qty}</span>
                     <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem 0.4rem', fontSize: '1rem' }} onClick={() => updateQty(c.id, 1)}>+</button>
                   </div>
                   <div style={{ fontSize: '0.875rem', fontWeight: 700, minWidth: 60, textAlign: 'right', color: 'var(--accent)' }}>₱{(c.price * c.qty).toFixed(2)}</div>
@@ -349,7 +506,7 @@ function POSTab({ items, merchantId, merchant, onSale }) {
               ))}
             </div>
           )}
-          <div className="divider" style={{ margin: '0' }} />
+          <div className="divider" style={{ margin: 0 }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: 'var(--text-3)', fontSize: '0.875rem' }}>Total</span>
             <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--accent)' }}>₱{cartTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
@@ -372,7 +529,10 @@ function POSTab({ items, merchantId, merchant, onSale }) {
           <div className="card animate-fade" style={{ marginTop: '1rem', border: '1px solid var(--green)', background: 'var(--green-dim)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
               <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--green)', fontFamily: 'var(--font-display)' }}>LAST SALE</span>
-              <button className="btn btn-ghost btn-sm" style={{ padding: '0.1rem' }} onClick={() => setLastSale(null)}><X size={12} /></button>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                <button className="btn btn-ghost btn-sm" style={{ padding: '0.1rem 0.4rem', fontSize: '0.75rem', color: 'var(--text-3)' }} onClick={() => printReceipt(lastSale)} title="Print receipt"><Printer size={12} /></button>
+                <button className="btn btn-ghost btn-sm" style={{ padding: '0.1rem' }} onClick={() => setLastSale(null)}><X size={12} /></button>
+              </div>
             </div>
             {lastSale.items.map(c => (
               <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: 'var(--text-2)' }}>
@@ -401,8 +561,32 @@ function InventoryTab({ items, merchantId, onUpdate }) {
   const [newPhotoFile, setNewPhotoFile] = useState(null);
   const [newPhotoPreview, setNewPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [sortBy, setSortBy] = useState('name'); // name | price | remaining | sold
+  const [sortDir, setSortDir] = useState('asc');
   const newPhotoRef = useRef();
   const editPhotoRef = useRef();
+
+  const toggleSort = (field) => {
+    if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(field); setSortDir('asc'); }
+  };
+
+  const sortedItems = [...items].sort((a, b) => {
+    let va, vb;
+    if (sortBy === 'name') { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
+    else if (sortBy === 'price') { va = a.price; vb = b.price; }
+    else if (sortBy === 'remaining') { va = a.quantity - a.quantity_sold; vb = b.quantity - b.quantity_sold; }
+    else if (sortBy === 'sold') { va = a.quantity_sold; vb = b.quantity_sold; }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const SortBtn = ({ field, label }) => (
+    <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.75rem', color: sortBy === field ? 'var(--accent)' : 'var(--text-3)', padding: '0.3rem 0.5rem' }} onClick={() => toggleSort(field)}>
+      {label} <ArrowUpDown size={11} style={{ opacity: sortBy === field ? 1 : 0.4 }} />
+    </button>
+  );
 
   const handleNewPhoto = async (e) => {
     const file = e.target.files[0];
@@ -425,49 +609,35 @@ function InventoryTab({ items, merchantId, onUpdate }) {
   const startEdit = (item) => {
     setEditId(item.id);
     setEditData({ name: item.name, description: item.description || '', price: item.price, quantity: item.quantity, photo_url: item.photo_url || '' });
-    setEditPhotoFile(null);
-    setEditPhotoPreview(null);
+    setEditPhotoFile(null); setEditPhotoPreview(null);
   };
 
   const saveEdit = async () => {
     setSaving(true);
     let photo_url = editData.photo_url;
     if (editPhotoFile) {
-      // Delete old photo if exists
       if (editData.photo_url) await deleteItemPhoto(editData.photo_url);
       const url = await uploadItemPhoto(editPhotoFile, merchantId);
       if (url) photo_url = url;
       else { toast.error('Photo upload failed'); setSaving(false); return; }
     }
-    await supabase.from('fm_items').update({
-      name: editData.name,
-      description: editData.description,
-      price: parseFloat(editData.price),
-      quantity: parseInt(editData.quantity),
-      photo_url,
-    }).eq('id', editId);
-    setEditId(null);
-    setEditPhotoFile(null);
-    setEditPhotoPreview(null);
-    setSaving(false);
-    onUpdate();
-    toast.success('Item updated');
+    await supabase.from('fm_items').update({ name: editData.name, description: editData.description, price: parseFloat(editData.price), quantity: parseInt(editData.quantity), photo_url }).eq('id', editId);
+    setEditId(null); setEditPhotoFile(null); setEditPhotoPreview(null);
+    setSaving(false); onUpdate(); toast.success('Item updated');
   };
 
   const deleteItem = async (item) => {
     if (!window.confirm('Delete this item?')) return;
     if (item.photo_url) await deleteItemPhoto(item.photo_url);
     await supabase.from('fm_items').delete().eq('id', item.id);
-    onUpdate();
-    toast.success('Item removed');
+    onUpdate(); toast.success('Item removed');
   };
 
   const removePhoto = async (item) => {
     if (!window.confirm('Remove this photo?')) return;
     await deleteItemPhoto(item.photo_url);
     await supabase.from('fm_items').update({ photo_url: null }).eq('id', item.id);
-    onUpdate();
-    toast.success('Photo removed');
+    onUpdate(); toast.success('Photo removed');
   };
 
   const addItem = async () => {
@@ -478,55 +648,38 @@ function InventoryTab({ items, merchantId, onUpdate }) {
       photo_url = await uploadItemPhoto(newPhotoFile, merchantId);
       if (!photo_url) { toast.error('Photo upload failed'); setSaving(false); return; }
     }
-    await supabase.from('fm_items').insert({
-      merchant_id: merchantId,
-      name: newItem.name.trim(),
-      description: newItem.description.trim(),
-      price: parseFloat(newItem.price),
-      quantity: parseInt(newItem.quantity),
-      quantity_sold: 0,
-      photo_url,
-    });
+    await supabase.from('fm_items').insert({ merchant_id: merchantId, name: newItem.name.trim(), description: newItem.description.trim(), price: parseFloat(newItem.price), quantity: parseInt(newItem.quantity), quantity_sold: 0, photo_url });
     setNewItem({ name: '', description: '', price: '', quantity: '' });
-    setNewPhotoFile(null);
-    setNewPhotoPreview(null);
-    setShowAdd(false);
-    setSaving(false);
-    onUpdate();
-    toast.success('Item added');
+    setNewPhotoFile(null); setNewPhotoPreview(null); setShowAdd(false);
+    setSaving(false); onUpdate(); toast.success('Item added');
   };
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ fontSize: '1rem', color: 'var(--text-2)' }}>Manage Inventory</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(s => !s)}><Plus size={14} /> Add Item</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>Sort:</span>
+          <SortBtn field="name" label="Name" />
+          <SortBtn field="price" label="Price" />
+          <SortBtn field="remaining" label="Stock" />
+          <SortBtn field="sold" label="Sold" />
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(s => !s)}><Plus size={14} /> Add Item</button>
+        </div>
       </div>
 
-      {/* Add item form */}
       {showAdd && (
         <div className="card animate-fade" style={{ borderColor: 'var(--accent-border)' }}>
           <h3 style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>New Item</h3>
           <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
-            {/* Photo picker */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-              <div
-                onClick={() => newPhotoRef.current.click()}
-                style={{ width: 120, height: 120, borderRadius: 'var(--radius-sm)', border: `2px dashed ${newPhotoPreview ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0, transition: 'border-color 0.2s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = newPhotoPreview ? 'var(--accent)' : 'var(--border)'}
-              >
-                {newPhotoPreview
-                  ? <img src={newPhotoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', color: 'var(--text-3)' }}><Upload size={22} /><span style={{ fontSize: '0.7rem' }}>Upload photo</span></div>
-                }
+              <div onClick={() => newPhotoRef.current.click()} style={{ width: 120, height: 120, borderRadius: 'var(--radius-sm)', border: `2px dashed ${newPhotoPreview ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0 }}>
+                {newPhotoPreview ? <img src={newPhotoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', color: 'var(--text-3)' }}><Upload size={22} /><span style={{ fontSize: '0.7rem' }}>Upload photo</span></div>}
               </div>
               <input ref={newPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleNewPhoto} />
               {newPhotoPreview && <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.7rem', color: 'var(--red)' }} onClick={() => { setNewPhotoFile(null); setNewPhotoPreview(null); }}>Remove</button>}
               <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Optional · max 5MB</span>
             </div>
-
-            {/* Fields */}
             <div style={{ flex: 1, minWidth: 240, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}><label className="form-label">Name *</label><input value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))} /></div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}><label className="form-label">Description</label><input value={newItem.description} onChange={e => setNewItem(p => ({ ...p, description: e.target.value }))} /></div>
@@ -541,16 +694,13 @@ function InventoryTab({ items, merchantId, onUpdate }) {
         </div>
       )}
 
-      {/* Items grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
-        {items.map(item => {
+        {sortedItems.map(item => {
           const remaining = item.quantity - item.quantity_sold;
           const status = remaining <= 0 ? { label: 'Out of Stock', cls: 'badge-red' } : remaining <= 2 ? { label: 'Low Stock', cls: 'badge-yellow' } : { label: 'In Stock', cls: 'badge-green' };
           const isEditing = editId === item.id;
-
           return (
             <div key={item.id} className="card" style={{ padding: 0, overflow: 'hidden', border: isEditing ? '1px solid var(--accent-border)' : '1px solid var(--border)' }}>
-              {/* Photo */}
               <div style={{ width: '100%', height: 160, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
                 {(isEditing ? (editPhotoPreview || editData.photo_url) : item.photo_url)
                   ? (isEditing
@@ -561,33 +711,19 @@ function InventoryTab({ items, merchantId, onUpdate }) {
                     )
                   : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={32} color="var(--text-3)" style={{ opacity: 0.3 }} /></div>
                 }
-                {/* Photo actions overlay */}
                 {isEditing && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => editPhotoRef.current.click()}><Upload size={13} /> Change</button>
-                    {(editPhotoPreview || editData.photo_url) && (
-                      <button className="btn btn-danger btn-sm" onClick={() => { setEditPhotoFile(null); setEditPhotoPreview(null); setEditData(p => ({ ...p, photo_url: '' })); }}>
-                        <Trash2 size={13} /> Remove
-                      </button>
-                    )}
+                    {(editPhotoPreview || editData.photo_url) && <button className="btn btn-danger btn-sm" onClick={() => { setEditPhotoFile(null); setEditPhotoPreview(null); setEditData(p => ({ ...p, photo_url: '' })); }}><Trash2 size={13} /> Remove</button>}
                     <input ref={editPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleEditPhoto} />
                   </div>
                 )}
                 {!isEditing && item.photo_url && (
-                  <button
-                    onClick={() => removePhoto(item)}
-                    style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: 6, padding: '0.25rem 0.4rem', cursor: 'pointer', color: 'var(--red)', opacity: 0, transition: 'opacity 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                    onMouseLeave={e => e.currentTarget.style.opacity = 0}
-                    title="Remove photo"
-                  ><Trash2 size={12} /></button>
+                  <button onClick={() => removePhoto(item)} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: 6, padding: '0.25rem 0.4rem', cursor: 'pointer', color: 'var(--red)', opacity: 0, transition: 'opacity 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0} title="Remove photo"><Trash2 size={12} /></button>
                 )}
-                <div style={{ position: 'absolute', top: 6, left: 6 }}>
-                  <span className={`badge ${status.cls}`}>{status.label}</span>
-                </div>
+                <div style={{ position: 'absolute', top: 6, left: 6 }}><span className={`badge ${status.cls}`}>{status.label}</span></div>
               </div>
-
-              {/* Card body */}
               <div style={{ padding: '0.875rem' }}>
                 {isEditing ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -597,7 +733,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
                       <div className="form-group"><label className="form-label">Price (₱)</label><input type="number" value={editData.price} onChange={e => setEditData(p => ({ ...p, price: e.target.value }))} /></div>
                       <div className="form-group"><label className="form-label">Stock</label><input type="number" value={editData.quantity} onChange={e => setEditData(p => ({ ...p, quantity: e.target.value }))} /></div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : <><Check size={13} /> Save</>}</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(null); setEditPhotoFile(null); setEditPhotoPreview(null); }}><X size={13} /> Cancel</button>
                     </div>
@@ -605,22 +741,17 @@ function InventoryTab({ items, merchantId, onUpdate }) {
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'var(--font-display)' }}>{item.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>{item.name}</div>
                       <div style={{ fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>
                     </div>
                     {item.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-3)', marginBottom: '0.5rem' }}>{item.description}</div>}
                     <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-3)', marginBottom: '0.75rem' }}>
-                      <span>{remaining} remaining</span>
-                      <span>{item.quantity_sold} sold</span>
+                      <span>{remaining} remaining</span><span>{item.quantity_sold} sold</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => startEdit(item)}><Edit2 size={12} /> Edit</button>
                       <button className="btn btn-danger btn-sm" onClick={() => deleteItem(item)}><Trash2 size={12} /> Delete</button>
-                      {!item.photo_url && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => { startEdit(item); setTimeout(() => editPhotoRef.current?.click(), 100); }} style={{ marginLeft: 'auto' }}>
-                          <Image size={12} /> Add Photo
-                        </button>
-                      )}
+                      {!item.photo_url && <button className="btn btn-ghost btn-sm" onClick={() => { startEdit(item); setTimeout(() => editPhotoRef.current?.click(), 100); }} style={{ marginLeft: 'auto' }}><Image size={12} /> Add Photo</button>}
                     </div>
                   </>
                 )}
@@ -629,24 +760,50 @@ function InventoryTab({ items, merchantId, onUpdate }) {
           );
         })}
       </div>
-
-      {items.length === 0 && (
-        <div className="empty-state card"><Package size={36} /><p>No items yet. Add your first item above.</p></div>
-      )}
+      {items.length === 0 && <div className="empty-state card"><Package size={36} /><p>No items yet. Add your first item above.</p></div>}
     </div>
   );
 }
 
 // ─── SALES LOG TAB ────────────────────────────────────────────────────────────
 function SalesLogTab({ sales, merchantId, merchant, onUpdate }) {
+  const [undoingId, setUndoingId] = useState(null);
+
   const undoSale = async (sale) => {
     if (!window.confirm('Undo this sale? Stock will be restored.')) return;
+    setUndoingId(sale.id);
     await supabase.from('fm_sales').update({ is_undone: true }).eq('id', sale.id);
     const { data } = await supabase.from('fm_items').select('quantity_sold').eq('id', sale.item_id).single();
     if (data) await supabase.from('fm_items').update({ quantity_sold: Math.max(0, data.quantity_sold - sale.quantity) }).eq('id', sale.item_id);
     await logAudit(merchant.event_id, merchantId, 'SALE_UNDONE', { sale_id: sale.id });
+    setUndoingId(null);
     onUpdate();
     toast.success('Sale undone');
+  };
+
+  const printReceipt = (sale) => {
+    const win = window.open('', '_blank', 'width=320,height=400');
+    win.document.write(`
+      <html><head><title>Receipt</title><style>
+        body { font-family: monospace; font-size: 13px; padding: 1rem; max-width: 280px; margin: 0 auto; }
+        h2 { font-size: 16px; margin-bottom: 4px; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; margin: 4px 0; }
+        .total { font-weight: bold; font-size: 15px; }
+        .footer { text-align: center; margin-top: 12px; font-size: 11px; color: #666; }
+      </style></head><body>
+        <h2>${merchant.shop_name}</h2>
+        <div style="font-size:11px;color:#666">${new Date(sale.sold_at).toLocaleString('en-PH')}</div>
+        <div class="divider"></div>
+        <div class="row"><span>${sale.item_name} × ${sale.quantity}</span><span>₱${parseFloat(sale.total_price).toFixed(2)}</span></div>
+        <div class="divider"></div>
+        <div class="row total"><span>TOTAL</span><span>₱${parseFloat(sale.total_price).toFixed(2)}</span></div>
+        <div class="row"><span>Payment</span><span>${sale.payment_method}</span></div>
+        <div class="footer">Thank you!</div>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
   };
 
   return (
@@ -661,21 +818,24 @@ function SalesLogTab({ sales, merchantId, merchant, onUpdate }) {
             <thead><tr><th>Time</th><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Payment</th><th></th></tr></thead>
             <tbody>
               {sales.length === 0 && <tr><td colSpan={7}><div className="empty-state">No sales recorded yet</div></td></tr>}
-              {sales.map(sale => {
-                const mins = Math.floor((Date.now() - new Date(sale.sold_at)) / 60000);
-                const canUndo = mins < 10;
-                return (
-                  <tr key={sale.id}>
-                    <td style={{ color: 'var(--text-3)', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{new Date(sale.sold_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style={{ fontWeight: 500 }}>{sale.item_name}</td>
-                    <td>{sale.quantity}</td>
-                    <td>₱{parseFloat(sale.unit_price).toFixed(2)}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>₱{parseFloat(sale.total_price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                    <td><span className={`badge ${sale.payment_method === 'cash' ? 'badge-green' : sale.payment_method === 'card' ? 'badge-blue' : 'badge-purple'}`}>{sale.payment_method}</span></td>
-                    <td>{canUndo && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', fontSize: '0.75rem' }} onClick={() => undoSale(sale)}>Undo</button>}</td>
-                  </tr>
-                );
-              })}
+              {sales.map(sale => (
+                <tr key={sale.id}>
+                  <td style={{ color: 'var(--text-3)', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{new Date(sale.sold_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td style={{ fontWeight: 500, color: 'var(--text)' }}>{sale.item_name}</td>
+                  <td>{sale.quantity}</td>
+                  <td>₱{parseFloat(sale.unit_price).toFixed(2)}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--accent)' }}>₱{parseFloat(sale.total_price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                  <td><span className={`badge ${sale.payment_method === 'cash' ? 'badge-green' : sale.payment_method === 'card' ? 'badge-blue' : 'badge-purple'}`}>{sale.payment_method}</span></td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--text-3)', padding: '0.2rem 0.4rem' }} onClick={() => printReceipt(sale)} title="Print receipt"><Printer size={12} /></button>
+                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }} onClick={() => undoSale(sale)} disabled={undoingId === sale.id}>
+                        <RotateCcw size={12} /> {undoingId === sale.id ? '…' : 'Undo'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

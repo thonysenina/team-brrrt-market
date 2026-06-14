@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, logAudit } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
 import toast from 'react-hot-toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import {
   Users, DollarSign, Bell, Settings, LogOut, Check, X, Plus,
   RefreshCw, Copy, Download, ChevronDown, ChevronUp, Eye,
-  Package, ShoppingCart, Image, Search, Filter
+  Package, ShoppingCart, Image, Search, Filter, Sun, Moon,
+  ClipboardList, RotateCcw
 } from 'lucide-react';
 import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
 export default function AdminPanel() {
   const { session, logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const { event } = session;
 
   const [tab, setTab] = useState('overview');
@@ -21,6 +24,8 @@ export default function AdminPanel() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState(null);
+  const [auditLog, setAuditLog] = useState([]);
+  const [selectedMerchants, setSelectedMerchants] = useState(new Set());
 
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [newEventForm, setNewEventForm] = useState({ name: '', event_date: '', location: '', organizer_pin: '' });
@@ -30,7 +35,7 @@ export default function AdminPanel() {
     const merchantRes = await supabase.from('fm_merchants').select('*').eq('event_id', event.id).order('created_at');
     const merchantIds = merchantRes.data?.map(m => m.id) || [];
 
-    const [sRes, aRes, iRes] = await Promise.all([
+    const [sRes, aRes, iRes, auditRes] = await Promise.all([
       merchantIds.length
         ? supabase.from('fm_sales').select('*').eq('is_undone', false).in('merchant_id', merchantIds)
         : Promise.resolve({ data: [] }),
@@ -38,12 +43,14 @@ export default function AdminPanel() {
       merchantIds.length
         ? supabase.from('fm_items').select('*').in('merchant_id', merchantIds).order('name')
         : Promise.resolve({ data: [] }),
+      supabase.from('fm_audit_log').select('*').eq('event_id', event.id).order('created_at', { ascending: false }).limit(100),
     ]);
 
     if (merchantRes.data) setMerchants(merchantRes.data);
     if (sRes.data) setAllSales(sRes.data);
     if (aRes.data) setAnnouncements(aRes.data);
     if (iRes.data) setAllItems(iRes.data);
+    if (auditRes.data) setAuditLog(auditRes.data);
     setLoading(false);
   }, [event.id]);
 
@@ -112,6 +119,7 @@ export default function AdminPanel() {
     { id: 'inventory',  label: 'Event Inventory', icon: Package     },
     { id: 'pos',        label: 'Organizer POS',   icon: ShoppingCart},
     { id: 'announcements', label: 'Announcements',icon: Bell        },
+    { id: 'audit',      label: 'Audit Log',       icon: ClipboardList},
     { id: 'settings',   label: 'Settings',        icon: Settings    },
   ];
 
@@ -131,6 +139,7 @@ export default function AdminPanel() {
         </div>
         {pending.length > 0 && <span className="badge badge-yellow"><Bell size={11} /> {pending.length} pending</span>}
         <button className="btn btn-ghost btn-sm" onClick={fetchData}><RefreshCw size={14} /></button>
+        <button className="btn btn-ghost btn-sm" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
         <button className="btn btn-ghost btn-sm" onClick={logout}><LogOut size={15} /></button>
       </header>
 
@@ -206,10 +215,37 @@ export default function AdminPanel() {
         {/* ── MERCHANTS ── */}
         {tab === 'merchants' && (
           <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <h2 style={{ fontSize: '1rem', color: 'var(--text-2)' }}>Merchant Applications</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <h2 style={{ fontSize: '1rem', color: 'var(--text-2)' }}>Merchant Applications</h2>
+              {selectedMerchants.size > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>{selectedMerchants.size} selected</span>
+                  <button className="btn btn-primary btn-sm" onClick={async () => {
+                    for (const id of selectedMerchants) await updateStatus(id, 'approved');
+                    setSelectedMerchants(new Set());
+                  }}><Check size={13} /> Approve All</button>
+                  <button className="btn btn-danger btn-sm" onClick={async () => {
+                    for (const id of selectedMerchants) await updateStatus(id, 'rejected');
+                    setSelectedMerchants(new Set());
+                  }}><X size={13} /> Reject All</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setSelectedMerchants(new Set())}>Clear</button>
+                </div>
+              )}
+              {pending.length > 1 && selectedMerchants.size === 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedMerchants(new Set(pending.map(m => m.id)))}>
+                  Select all pending ({pending.length})
+                </button>
+              )}
+            </div>
             {merchants.length === 0 && <div className="empty-state card"><Users size={36} /><p>No merchants yet</p></div>}
             {merchants.map(m => (
               <MerchantCard key={m.id} merchant={m}
+                selected={selectedMerchants.has(m.id)}
+                onSelect={() => setSelectedMerchants(prev => {
+                  const next = new Set(prev);
+                  next.has(m.id) ? next.delete(m.id) : next.add(m.id);
+                  return next;
+                })}
                 onApprove={() => updateStatus(m.id, 'approved')}
                 onReject={() => updateStatus(m.id, 'rejected')} />
             ))}
@@ -259,6 +295,11 @@ export default function AdminPanel() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* ── AUDIT LOG ── */}
+        {tab === 'audit' && (
+          <AuditLogTab auditLog={auditLog} merchants={merchants} />
         )}
 
         {/* ── SETTINGS ── */}
@@ -691,14 +732,18 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-function MerchantCard({ merchant, onApprove, onReject }) {
+function MerchantCard({ merchant, selected, onSelect, onApprove, onReject }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', border: selected ? '1px solid var(--accent-border)' : '1px solid var(--border)', background: selected ? 'var(--accent-dim)' : 'var(--bg-2)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* Checkbox */}
+        <div onClick={onSelect} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`, background: selected ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}>
+          {selected && <Check size={11} color="#000" strokeWidth={3} />}
+        </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{merchant.shop_name}</span>
+            <span style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--text)' }}>{merchant.shop_name}</span>
             <span className={`badge ${merchant.status === 'approved' ? 'badge-green' : merchant.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}>{merchant.status}</span>
           </div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: 2 }}>{merchant.full_name}</div>

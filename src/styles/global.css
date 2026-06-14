@@ -295,3 +295,49 @@ tbody tr:hover td { background: var(--bg-3); }
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }
+
+/* ── LIGHT MODE ── */
+[data-theme="light"] {
+  --bg: #f5f5f7;
+  --bg-2: #ffffff;
+  --bg-3: #ebebef;
+  --bg-4: #e0e0e6;
+  --border: #d0d0da;
+  --border-light: #b8b8c8;
+  --text: #0d0d0f;
+  --text-2: #44445a;
+  --text-3: #88889a;
+  --accent: #d48f00;
+  --accent-dim: rgba(212,143,0,0.12);
+  --accent-border: rgba(212,143,0,0.3);
+  --green: #16a05e;
+  --green-dim: rgba(22,160,94,0.1);
+  --red: #d63b3b;
+  --red-dim: rgba(214,59,59,0.1);
+  --blue: #3a7ad4;
+  --blue-dim: rgba(58,122,212,0.1);
+  --purple: #7c5ce0;
+  --purple-dim: rgba(124,92,224,0.1);
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background: var(--bg-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+[data-theme="light"] select option {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+[data-theme="light"] .btn-primary {
+  color: #fff;
+}
+
+[data-theme="light"] tbody tr:hover td {
+  background: var(--bg-3);
+}
