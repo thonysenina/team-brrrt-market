@@ -10,6 +10,7 @@ import {
   LogOut, Plus, Trash2, Edit2, Check, X, RefreshCw, DollarSign,
   Archive, Zap, Image, Upload
 } from 'lucide-react';
+import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
 export default function Dashboard() {
   const { session, logout } = useAuth();
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [sales, setSales] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null); // { src, alt }
 
   const fetchData = useCallback(async () => {
     const [itemsRes, salesRes, annRes] = await Promise.all([
@@ -34,6 +36,13 @@ export default function Dashboard() {
   }, [merchantId, eventId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Listen for lightbox trigger events from child components
+  useEffect(() => {
+    const handler = (e) => setLightbox({ src: e.detail.src, alt: e.detail.alt });
+    document.addEventListener('open-lightbox', handler);
+    return () => document.removeEventListener('open-lightbox', handler);
+  }, []);
 
   const grossRevenue = sales.reduce((s, t) => s + parseFloat(t.total_price), 0);
   const outOfStock = items.filter(i => i.quantity - i.quantity_sold <= 0);
@@ -136,7 +145,9 @@ export default function Dashboard() {
                     {topItems.filter(i => i.quantity_sold > 0).map((item, idx) => (
                       <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         {item.photo_url ? (
-                          <img src={item.photo_url} alt={item.name} style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                          <LightboxTrigger src={item.photo_url} alt={item.name}>
+                            <img src={item.photo_url} alt={item.name} style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                          </LightboxTrigger>
                         ) : (
                           <span style={{ width: 32, height: 32, borderRadius: 6, background: idx === 0 ? 'var(--accent-dim)' : 'var(--bg-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: idx === 0 ? 'var(--accent)' : 'var(--text-3)', flexShrink: 0 }}>{idx + 1}</span>
                         )}
@@ -167,7 +178,7 @@ export default function Dashboard() {
                         <tr key={item.id}>
                           <td>
                             {item.photo_url
-                              ? <img src={item.photo_url} alt={item.name} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} />
+                              ? <LightboxTrigger src={item.photo_url} alt={item.name}><img src={item.photo_url} alt={item.name} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, display: 'block' }} /></LightboxTrigger>
                               : <div style={{ width: 36, height: 36, background: 'var(--bg-4)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={14} color="var(--text-3)" /></div>
                             }
                           </td>
@@ -192,6 +203,7 @@ export default function Dashboard() {
         {tab === 'sales' && <SalesLogTab sales={sales} merchantId={merchantId} merchant={merchant} onUpdate={fetchData} />}
 
       </main>
+    {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
@@ -276,7 +288,9 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                   {/* Photo area */}
                   <div style={{ width: '100%', height: 110, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
                     {item.photo_url ? (
-                      <img src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <LightboxTrigger src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%' }}>
+                        <img src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </LightboxTrigger>
                     ) : (
                       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Image size={28} color="var(--text-3)" style={{ opacity: 0.4 }} />
@@ -539,7 +553,12 @@ function InventoryTab({ items, merchantId, onUpdate }) {
               {/* Photo */}
               <div style={{ width: '100%', height: 160, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
                 {(isEditing ? (editPhotoPreview || editData.photo_url) : item.photo_url)
-                  ? <img src={isEditing ? (editPhotoPreview || editData.photo_url) : item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ? (isEditing
+                      ? <img src={editPhotoPreview || editData.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <LightboxTrigger src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%' }}>
+                          <img src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </LightboxTrigger>
+                    )
                   : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={32} color="var(--text-3)" style={{ opacity: 0.3 }} /></div>
                 }
                 {/* Photo actions overlay */}

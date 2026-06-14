@@ -8,6 +8,7 @@ import {
   RefreshCw, Copy, Download, ChevronDown, ChevronUp, Eye,
   Package, ShoppingCart, Image, Search, Filter
 } from 'lucide-react';
+import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
 export default function AdminPanel() {
   const { session, logout } = useAuth();
@@ -19,6 +20,7 @@ export default function AdminPanel() {
   const [allSales, setAllSales] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null);
 
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [newEventForm, setNewEventForm] = useState({ name: '', event_date: '', location: '', organizer_pin: '' });
@@ -46,6 +48,12 @@ export default function AdminPanel() {
   }, [event.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const handler = (e) => setLightbox({ src: e.detail.src, alt: e.detail.alt });
+    document.addEventListener('open-lightbox', handler);
+    return () => document.removeEventListener('open-lightbox', handler);
+  }, []);
 
   const approved = merchants.filter(m => m.status === 'approved');
   const pending = merchants.filter(m => m.status === 'pending');
@@ -294,6 +302,7 @@ export default function AdminPanel() {
           </div>
         )}
       </main>
+    {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
@@ -394,7 +403,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
                     <tr key={item.id}>
                       <td>
                         {item.photo_url
-                          ? <img src={item.photo_url} alt={item.name} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} />
+                          ? <LightboxTrigger src={item.photo_url} alt={item.name}><img src={item.photo_url} alt={item.name} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, display: 'block' }} /></LightboxTrigger>
                           : <div style={{ width: 36, height: 36, background: 'var(--bg-4)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={14} color="var(--text-3)" /></div>
                         }
                       </td>
@@ -561,7 +570,9 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
                     {/* Photo */}
                     <div style={{ width: '100%', height: 100, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
                       {item.photo_url
-                        ? <img src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ? <LightboxTrigger src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%' }}>
+                            <img src={item.photo_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </LightboxTrigger>
                         : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={24} color="var(--text-3)" style={{ opacity: 0.3 }} /></div>
                       }
                       {inCart && (
