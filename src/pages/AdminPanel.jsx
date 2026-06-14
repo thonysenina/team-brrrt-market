@@ -731,6 +731,85 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
   );
 }
 
+// ─── AUDIT LOG TAB ────────────────────────────────────────────────────────────
+function AuditLogTab({ auditLog, merchants }) {
+  const [filter, setFilter] = useState('');
+  const merchantMap = Object.fromEntries(merchants.map(m => [m.id, m]));
+
+  const ACTION_LABELS = {
+    MERCHANT_REGISTERED: { label: 'Registered',   cls: 'badge-blue'   },
+    MERCHANT_APPROVED:   { label: 'Approved',      cls: 'badge-green'  },
+    MERCHANT_REJECTED:   { label: 'Rejected',      cls: 'badge-red'    },
+    SALE:                { label: 'Sale',           cls: 'badge-yellow' },
+    SALE_UNDONE:         { label: 'Sale Undone',    cls: 'badge-red'    },
+    ORGANIZER_SALE:      { label: 'Organizer Sale', cls: 'badge-purple' },
+  };
+
+  const filtered = auditLog.filter(e => {
+    if (!filter) return true;
+    const merchant = merchantMap[e.merchant_id];
+    return (
+      e.action.toLowerCase().includes(filter.toLowerCase()) ||
+      merchant?.shop_name.toLowerCase().includes(filter.toLowerCase()) ||
+      merchant?.full_name.toLowerCase().includes(filter.toLowerCase())
+    );
+  });
+
+  return (
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <h2 style={{ fontSize: '1rem', color: 'var(--text-2)' }}>Audit Log</h2>
+        <div style={{ position: 'relative', width: 260 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+          <input placeholder="Filter by action or merchant…" value={filter} onChange={e => setFilter(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Action</th><th>Merchant</th><th>Details</th></tr></thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={4}><div className="empty-state" style={{ padding: '2rem' }}>No audit entries found</div></td></tr>
+              )}
+              {filtered.map(entry => {
+                const merchant = merchantMap[entry.merchant_id];
+                const meta = ACTION_LABELS[entry.action] || { label: entry.action, cls: 'badge-blue' };
+                const details = entry.details || {};
+                return (
+                  <tr key={entry.id}>
+                    <td style={{ color: 'var(--text-3)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                      {new Date(entry.created_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
+                    <td style={{ fontSize: '0.8125rem' }}>
+                      {merchant ? (
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>{merchant.shop_name}</div>
+                          <div style={{ color: 'var(--text-3)', fontSize: '0.75rem' }}>{merchant.full_name}</div>
+                        </div>
+                      ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                    </td>
+                    <td style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
+                      {details.total != null && `₱${parseFloat(details.total).toFixed(2)}`}
+                      {details.items != null && ` · ${details.items} item${details.items !== 1 ? 's' : ''}`}
+                      {details.shop_name && `"${details.shop_name}"`}
+                      {details.sale_id && `Sale #${String(details.sale_id).slice(0, 8)}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border)', fontSize: '0.8125rem', color: 'var(--text-3)' }}>
+          Showing {filtered.length} of {auditLog.length} entries (last 100)
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function MerchantCard({ merchant, selected, onSelect, onApprove, onReject }) {
   const [expanded, setExpanded] = useState(false);
