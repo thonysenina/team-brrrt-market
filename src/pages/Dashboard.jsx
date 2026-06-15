@@ -592,18 +592,32 @@ function InventoryTab({ items, merchantId, onUpdate }) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
-    const { file: prepared, previewUrl } = await prepareImageFile(file);
-    setNewPhotoFile(prepared);
-    setNewPhotoPreview(previewUrl);
+    setNewPhotoPreview('loading');
+    try {
+      const { file: prepared, previewUrl } = await prepareImageFile(file);
+      setNewPhotoFile(prepared);
+      setNewPhotoPreview(previewUrl);
+    } catch (err) {
+      console.error('[photo] handleNewPhoto error:', err);
+      toast.error('Could not load photo — try a different image');
+      setNewPhotoPreview(null);
+    }
   };
 
   const handleEditPhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
-    const { file: prepared, previewUrl } = await prepareImageFile(file);
-    setEditPhotoFile(prepared);
-    setEditPhotoPreview(previewUrl);
+    setEditPhotoPreview('loading');
+    try {
+      const { file: prepared, previewUrl } = await prepareImageFile(file);
+      setEditPhotoFile(prepared);
+      setEditPhotoPreview(previewUrl);
+    } catch (err) {
+      console.error('[photo] handleEditPhoto error:', err);
+      toast.error('Could not load photo — try a different image');
+      setEditPhotoPreview(null);
+    }
   };
 
   const startEdit = (item) => {
@@ -674,7 +688,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
           <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
               <div onClick={() => newPhotoRef.current.click()} style={{ width: 120, height: 120, borderRadius: 'var(--radius-sm)', border: `2px dashed ${newPhotoPreview ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0 }}>
-                {newPhotoPreview ? <img src={newPhotoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', color: 'var(--text-3)' }}><Upload size={22} /><span style={{ fontSize: '0.7rem' }}>Upload photo</span></div>}
+                {newPhotoPreview === 'loading' ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', color: 'var(--text-3)' }}><div className="animate-pulse" style={{ fontSize: '1.4rem' }}>⏳</div><span style={{ fontSize: '0.7rem' }}>Processing…</span></div> : newPhotoPreview ? <img src={newPhotoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', color: 'var(--text-3)' }}><Upload size={22} /><span style={{ fontSize: '0.7rem' }}>Upload photo</span></div>}
               </div>
               <input ref={newPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleNewPhoto} />
               {newPhotoPreview && <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.7rem', color: 'var(--red)' }} onClick={() => { setNewPhotoFile(null); setNewPhotoPreview(null); }}>Remove</button>}

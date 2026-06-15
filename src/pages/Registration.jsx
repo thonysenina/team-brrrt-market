@@ -46,11 +46,23 @@ export default function Registration() {
   const handleItemPhoto = async (i, file) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
-    const { file: prepared, previewUrl } = await prepareImageFile(file);
-    const updated = [...items];
-    updated[i].photoFile = prepared;
-    updated[i].photoPreview = previewUrl;
-    setItems(updated);
+    // Show loading state immediately
+    const loadingUpdate = [...items];
+    loadingUpdate[i].photoPreview = 'loading';
+    setItems(loadingUpdate);
+    try {
+      const { file: prepared, previewUrl } = await prepareImageFile(file);
+      const updated = [...items];
+      updated[i].photoFile = prepared;
+      updated[i].photoPreview = previewUrl;
+      setItems(updated);
+    } catch (err) {
+      console.error('[photo] handleItemPhoto error:', err);
+      toast.error('Could not load photo — try a different image');
+      const reset = [...items];
+      reset[i].photoPreview = null;
+      setItems(reset);
+    }
   };
 
   const removeItemPhoto = (i) => {
@@ -226,7 +238,9 @@ export default function Registration() {
                         onClick={() => { if (!photoRefs.current[i]) photoRefs.current[i] = document.getElementById(`photo-ref-${i}`); photoRefs.current[i]?.click(); }}
                         style={{ width: 90, height: 90, borderRadius: 8, border: `2px dashed ${item.photoPreview ? 'var(--accent)' : 'var(--border-light)'}`, background: 'var(--bg-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flexShrink: 0, transition: 'border-color 0.2s' }}
                       >
-                        {item.photoPreview
+                        {item.photoPreview === 'loading'
+                          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', color: 'var(--text-3)' }}><div className="animate-pulse" style={{ fontSize: '1.2rem' }}>⏳</div><span style={{ fontSize: '0.65rem' }}>Processing…</span></div>
+                          : item.photoPreview
                           ? <img src={item.photoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', color: 'var(--text-3)' }}><Upload size={18} /><span style={{ fontSize: '0.65rem' }}>Photo</span></div>
                         }

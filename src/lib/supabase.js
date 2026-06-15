@@ -110,16 +110,34 @@ function toDataUrl(file) {
  * - Returns the processed File for uploading.
  */
 export async function prepareImageFile(rawFile) {
+  // Log what iOS actually gives us — helps diagnose library vs camera differences
+  console.log('[photo] name:', rawFile.name, '| type:', rawFile.type || '(empty)', '| size:', rawFile.size, 'bytes');
+
   let file = rawFile;
 
-  if (needsConversion(rawFile)) {
+  // Step 1: always run through canvas to normalise the file.
+  // iOS photo library picks often have blank MIME types and can't be
+  // rendered directly. Drawing through canvas forces a full decode and
+  // re-encode to a clean JPEG the browser can display.
+  try {
     file = await toJpeg(rawFile);
+    console.log('[photo] after toJpeg — name:', file.name, '| type:', file.type, '| size:', file.size);
+  } catch (err) {
+    console.error('[photo] toJpeg threw:', err);
+    file = rawFile; // fall back to original
   }
 
-  // Use FileReader for the preview — data URLs are persistent and
-  // work correctly when assigned to <img src> on all platforms.
-  const previewUrl = await toDataUrl(file);
-  return { file, previewUrl };
+  // Step 2: read into a data URL for the preview.
+  // Object URLs can silently fail on iOS Safari; data URLs are always safe.
+  try {
+    const previewUrl = await toDataUrl(file);
+    console.log('[photo] previewUrl prefix:', previewUrl.slice(0, 40));
+    return { file, previewUrl };
+  } catch (err) {
+    console.error('[photo] toDataUrl threw:', err);
+    // Last resort — try object URL so at least upload can proceed
+    return { file, previewUrl: URL.createObjectURL(file) };
+  }
 }
 
 /**
