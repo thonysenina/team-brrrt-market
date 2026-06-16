@@ -60,7 +60,7 @@ export default function Dashboard() {
   const grossRevenue = sales.reduce((s, t) => s + parseFloat(t.total_price), 0);
   const totalUnitsSold = sales.reduce((s, t) => s + t.quantity, 0);
   const outOfStock = items.filter(i => i.quantity - i.quantity_sold <= 0);
-  const lowStock = items.filter(i => { const rem = i.quantity - i.quantity_sold; return rem > 0 && rem <= 2; });
+  const lowStock = items.filter(i => { const rem = i.quantity - i.quantity_sold; return i.quantity > 2 && rem > 0 && rem <= 2; });
   const topItems = [...items].sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 5);
   const zeroSales = items.filter(i => i.quantity_sold === 0 && i.quantity > 0);
 
@@ -198,7 +198,7 @@ export default function Dashboard() {
                   <tbody>
                     {items.map(item => {
                       const remaining = item.quantity - item.quantity_sold;
-                      const status = remaining <= 0 ? { label: 'Out of Stock', cls: 'badge-red' } : remaining <= 2 ? { label: 'Low Stock', cls: 'badge-yellow' } : { label: 'In Stock', cls: 'badge-green' };
+                      const status = remaining <= 0 ? { label: 'Out of Stock', cls: 'badge-red' } : (item.quantity > 2 && remaining <= 2) ? { label: 'Low Stock', cls: 'badge-yellow' } : { label: 'In Stock', cls: 'badge-green' };
                       return (
                         <tr key={item.id}>
                           <td>
@@ -463,7 +463,7 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                       </div>
                     )}
                     {inCart && <div style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: '#000', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800, padding: '0.15rem 0.5rem', fontFamily: 'var(--font-display)' }}>×{inCart.qty}</div>}
-                    {remaining <= 2 && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--red)', color: '#fff', borderRadius: 99, fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.45rem' }}>{remaining} left</div>}
+                    {(item.quantity > 2 && remaining <= 2) && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--red)', color: '#fff', borderRadius: 99, fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.45rem' }}>{remaining} left</div>}
                   </div>
                   <div style={{ padding: '0.65rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                     <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
@@ -591,7 +591,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
   const handleNewPhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Photo must be under 10MB'); return; }
     setNewPhotoPreview('loading');
     try {
       const { file: prepared, previewUrl } = await prepareImageFile(file);
@@ -607,7 +607,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
   const handleEditPhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Photo must be under 10MB'); return; }
     setEditPhotoPreview('loading');
     try {
       const { file: prepared, previewUrl } = await prepareImageFile(file);
@@ -692,7 +692,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
               </div>
               <input ref={newPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleNewPhoto} />
               {newPhotoPreview && <button className="btn btn-ghost btn-sm" style={{ fontSize: '0.7rem', color: 'var(--red)' }} onClick={() => { setNewPhotoFile(null); setNewPhotoPreview(null); }}>Remove</button>}
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Optional · max 5MB</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Optional · max 10MB</span>
             </div>
             <div style={{ flex: 1, minWidth: 240, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}><label className="form-label">Name *</label><input value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))} /></div>
@@ -711,7 +711,7 @@ function InventoryTab({ items, merchantId, onUpdate }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
         {sortedItems.map(item => {
           const remaining = item.quantity - item.quantity_sold;
-          const status = remaining <= 0 ? { label: 'Out of Stock', cls: 'badge-red' } : remaining <= 2 ? { label: 'Low Stock', cls: 'badge-yellow' } : { label: 'In Stock', cls: 'badge-green' };
+          const status = remaining <= 0 ? { label: 'Out of Stock', cls: 'badge-red' } : (item.quantity > 2 && remaining <= 2) ? { label: 'Low Stock', cls: 'badge-yellow' } : { label: 'In Stock', cls: 'badge-green' };
           const isEditing = editId === item.id;
           return (
             <div key={item.id} className="card" style={{ padding: 0, overflow: 'hidden', border: isEditing ? '1px solid var(--accent-border)' : '1px solid var(--border)' }}>

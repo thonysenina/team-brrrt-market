@@ -359,7 +359,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
   const filtered = allItems.filter(item => {
     const merchant = merchantMap[item.merchant_id];
     const remaining = item.quantity - item.quantity_sold;
-    const status = remaining <= 0 ? 'out' : remaining <= 2 ? 'low' : 'in';
+    const status = remaining <= 0 ? 'out' : (item.quantity > 2 && remaining <= 2) ? 'low' : 'in';
 
     if (filterMerchant !== 'all' && item.merchant_id !== filterMerchant) return false;
     if (filterStatus === 'out' && status !== 'out') return false;
@@ -374,7 +374,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
 
   const totalItems = allItems.length;
   const outCount = allItems.filter(i => i.quantity - i.quantity_sold <= 0).length;
-  const lowCount = allItems.filter(i => { const r = i.quantity - i.quantity_sold; return r > 0 && r <= 2; }).length;
+  const lowCount = allItems.filter(i => { const r = i.quantity - i.quantity_sold; return i.quantity > 2 && r > 0 && r <= 2; }).length;
   const totalStock = allItems.reduce((s, i) => s + (i.quantity - i.quantity_sold), 0);
 
   return (
@@ -437,7 +437,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
                   const remaining = item.quantity - item.quantity_sold;
                   const status = remaining <= 0
                     ? { label: 'Out of Stock', cls: 'badge-red' }
-                    : remaining <= 2
+                    : (item.quantity > 2 && remaining <= 2)
                     ? { label: 'Low Stock', cls: 'badge-yellow' }
                     : { label: 'In Stock', cls: 'badge-green' };
                   return (
@@ -459,7 +459,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
                       <td style={{ fontWeight: 600 }}>₱{parseFloat(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                       <td>{item.quantity}</td>
                       <td>{item.quantity_sold}</td>
-                      <td style={{ fontWeight: 700, color: remaining <= 2 ? 'var(--red)' : 'inherit' }}>{remaining}</td>
+                      <td style={{ fontWeight: 700, color: (item.quantity > 2 && remaining <= 2) ? 'var(--red)' : 'inherit' }}>{remaining}</td>
                       <td>₱{(item.quantity_sold * item.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                       <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
                     </tr>
@@ -619,7 +619,7 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
                       {inCart && (
                         <div style={{ position: 'absolute', top: 5, right: 5, background: 'var(--accent)', color: '#000', borderRadius: 99, fontSize: '0.65rem', fontWeight: 800, padding: '0.1rem 0.4rem' }}>×{inCart.qty}</div>
                       )}
-                      {remaining <= 2 && (
+                      {(item.quantity > 2 && remaining <= 2) && (
                         <div style={{ position: 'absolute', top: 5, left: 5, background: 'var(--red)', color: '#fff', borderRadius: 99, fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.35rem' }}>{remaining} left</div>
                       )}
                     </div>

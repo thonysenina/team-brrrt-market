@@ -45,7 +45,7 @@ export default function Registration() {
 
   const handleItemPhoto = async (i, file) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error('Photo must be under 5MB'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Photo must be under 10MB'); return; }
     // Show loading state immediately
     const loadingUpdate = [...items];
     loadingUpdate[i].photoPreview = 'loading';
