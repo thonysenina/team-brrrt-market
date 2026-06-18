@@ -377,6 +377,35 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
   const lowCount = allItems.filter(i => { const r = i.quantity - i.quantity_sold; return i.quantity > 2 && r > 0 && r <= 2; }).length;
   const totalStock = allItems.reduce((s, i) => s + (i.quantity - i.quantity_sold), 0);
 
+  const exportInventoryCSV = () => {
+    const rows = [['Item', 'Description', 'Merchant', 'Merchant Contact', 'Price', 'Stock', 'Sold', 'Remaining', 'Revenue', 'Status']];
+    filtered.forEach(item => {
+      const merchant = merchantMap[item.merchant_id];
+      const remaining = item.quantity - item.quantity_sold;
+      const status = remaining <= 0 ? 'Out of Stock' : (item.quantity > 2 && remaining <= 2) ? 'Low Stock' : 'In Stock';
+      rows.push([
+        item.name,
+        item.description || '',
+        merchant?.shop_name || '—',
+        merchant?.full_name || '—',
+        parseFloat(item.price).toFixed(2),
+        item.quantity,
+        item.quantity_sold,
+        remaining,
+        (item.quantity_sold * item.price).toFixed(2),
+        status,
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `event_inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="grid-4">
@@ -408,6 +437,7 @@ function EventInventoryTab({ merchants, allItems, onRefresh }) {
           <option value="low">Low Stock</option>
           <option value="out">Out of Stock</option>
         </select>
+        <button className="btn btn-secondary btn-sm" onClick={exportInventoryCSV}><Download size={13} /> Export CSV</button>
         <button className="btn btn-ghost btn-sm" onClick={onRefresh}><RefreshCw size={13} /></button>
       </div>
 
