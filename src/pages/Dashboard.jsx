@@ -367,7 +367,7 @@ function POSTab({ items, merchantId, merchant, onSale }) {
         if (existing.qty >= maxQty) { toast.error(`Only ${maxQty} left`); return prev; }
         return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c);
       }
-      return [...prev, { ...item, qty: 1 }];
+      return [...prev, { ...item, qty: 1, originalPrice: item.price }];
     });
   };
 
@@ -377,6 +377,12 @@ function POSTab({ items, merchantId, merchant, onSale }) {
 
   const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
   const cartTotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
+
+  const [editPriceId, setEditPriceId] = useState(null);
+  const updatePrice = (id, newPrice) => {
+    const val = parseFloat(newPrice);
+    setCart(prev => prev.map(c => c.id === id ? { ...c, price: isNaN(val) || val < 0 ? c.originalPrice : val } : c));
+  };
 
   const handleCheckout = async () => {
     if (!cart.length) return;
@@ -396,7 +402,12 @@ function POSTab({ items, merchantId, merchant, onSale }) {
       for (const c of cart) {
         await supabase.from('fm_items').update({ quantity_sold: c.quantity_sold + c.qty }).eq('id', c.id);
       }
-      await logAudit(merchant.event_id, merchantId, 'SALE', { items: cart.length, total: cartTotal });
+      const overridden = cart.filter(c => c.price !== c.originalPrice);
+      await logAudit(merchant.event_id, merchantId, 'SALE', {
+        items: cart.length,
+        total: cartTotal,
+        ...(overridden.length ? { price_overrides: overridden.map(c => `${c.name}: ₱${c.originalPrice}→₱${c.price}`) } : {}),
+      });
       setLastSale({ items: [...cart], total: cartTotal, payment, time: new Date() });
       setCart([]);
       toast.success('Sale recorded!');
@@ -493,7 +504,25 @@ function POSTab({ items, merchantId, merchant, onSale }) {
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.8125rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{c.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>₱{parseFloat(c.price).toFixed(2)} each</div>
+                    {editPriceId === c.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.15rem' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>₱</span>
+                        <input
+                          type="number" step="0.01" min="0" autoFocus
+                          defaultValue={c.price}
+                          onBlur={e => { updatePrice(c.id, e.target.value); setEditPriceId(null); }}
+                          onKeyDown={e => { if (e.key === 'Enter') { updatePrice(c.id, e.target.value); setEditPriceId(null); } if (e.key === 'Escape') setEditPriceId(null); }}
+                          style={{ width: 70, padding: '0.1rem 0.3rem', fontSize: '0.75rem' }}
+                        />
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-3)' }}>each</span>
+                      </div>
+                    ) : (
+                      <div onClick={() => setEditPriceId(c.id)} style={{ fontSize: '0.75rem', color: c.price !== c.originalPrice ? 'var(--accent)' : 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        ₱{parseFloat(c.price).toFixed(2)} each
+                        {c.price !== c.originalPrice && <span style={{ fontSize: '0.65rem', textDecoration: 'line-through', color: 'var(--text-3)' }}>₱{parseFloat(c.originalPrice).toFixed(2)}</span>}
+                        <Edit2 size={10} style={{ opacity: 0.6 }} />
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem 0.4rem', fontSize: '1rem' }} onClick={() => updateQty(c.id, -1)}>−</button>

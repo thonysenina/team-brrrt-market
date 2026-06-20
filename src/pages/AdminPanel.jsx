@@ -8,7 +8,7 @@ import {
   Users, DollarSign, Bell, Settings, LogOut, Check, X, Plus,
   RefreshCw, Copy, Download, ChevronDown, ChevronUp, Eye,
   Package, ShoppingCart, Image, Search, Filter, Sun, Moon,
-  ClipboardList, RotateCcw
+  ClipboardList, RotateCcw, Edit2
 } from 'lucide-react';
 import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
@@ -299,7 +299,7 @@ export default function AdminPanel() {
 
         {/* ── AUDIT LOG ── */}
         {tab === 'audit' && (
-          <AuditLogTab auditLog={auditLog} merchants={merchants} />
+          <AuditLogTab auditLog={auditLog} merchants={merchants} allSales={allSales} event={event} onRefresh={fetchData} />
         )}
 
         {/* ── SETTINGS ── */}
@@ -535,7 +535,7 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
         if (existing.qty >= maxQty) { toast.error(`Only ${maxQty} left`); return prev; }
         return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c);
       }
-      return [...prev, { ...item, qty: 1 }];
+      return [...prev, { ...item, qty: 1, originalPrice: item.price }];
     });
   };
 
@@ -544,6 +544,12 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
   };
 
   const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
+
+  const [editPriceId, setEditPriceId] = useState(null);
+  const updatePrice = (id, newPrice) => {
+    const val = parseFloat(newPrice);
+    setCart(prev => prev.map(c => c.id === id ? { ...c, price: isNaN(val) || val < 0 ? c.originalPrice : val } : c));
+  };
 
   // Group cart by merchant for display
   const cartByMerchant = cart.reduce((acc, c) => {
@@ -578,9 +584,11 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
           await supabase.from('fm_items').update({ quantity_sold: c.quantity_sold + c.qty }).eq('id', c.id);
         }
 
+        const overridden = items.filter(c => c.price !== c.originalPrice);
         await logAudit(event.id, merchantId, 'ORGANIZER_SALE', {
           items: items.length,
           total: items.reduce((s, c) => s + c.price * c.qty, 0),
+          ...(overridden.length ? { price_overrides: overridden.map(c => `${c.name}: ₱${c.originalPrice}→₱${c.price}`) } : {}),
         });
       }
 
@@ -691,8 +699,25 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
                             : <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-4)', flexShrink: 0 }} />
                           }
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>₱{parseFloat(c.price).toFixed(2)}</div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{c.name}</div>
+                            {editPriceId === c.id ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.1rem' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-3)' }}>₱</span>
+                                <input
+                                  type="number" step="0.01" min="0" autoFocus
+                                  defaultValue={c.price}
+                                  onBlur={e => { updatePrice(c.id, e.target.value); setEditPriceId(null); }}
+                                  onKeyDown={e => { if (e.key === 'Enter') { updatePrice(c.id, e.target.value); setEditPriceId(null); } if (e.key === 'Escape') setEditPriceId(null); }}
+                                  style={{ width: 60, padding: '0.05rem 0.25rem', fontSize: '0.7rem' }}
+                                />
+                              </div>
+                            ) : (
+                              <div onClick={() => setEditPriceId(c.id)} style={{ fontSize: '0.7rem', color: c.price !== c.originalPrice ? 'var(--accent)' : 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                ₱{parseFloat(c.price).toFixed(2)}
+                                {c.price !== c.originalPrice && <span style={{ fontSize: '0.6rem', textDecoration: 'line-through' }}>₱{parseFloat(c.originalPrice).toFixed(2)}</span>}
+                                <Edit2 size={9} style={{ opacity: 0.5 }} />
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                             <button className="btn btn-ghost btn-sm" style={{ padding: '0.15rem 0.35rem' }} onClick={() => updateQty(c.id, -1)}>−</button>
@@ -762,20 +787,25 @@ function OrganizerPOSTab({ merchants, allItems, event, onSale }) {
 }
 
 // ─── AUDIT LOG TAB ────────────────────────────────────────────────────────────
-function AuditLogTab({ auditLog, merchants }) {
+function AuditLogTab({ auditLog, merchants, allSales, event, onRefresh }) {
+  const [view, setView] = useState('log'); // log | sales
   const [filter, setFilter] = useState('');
+  const [editingSaleId, setEditingSaleId] = useState(null);
+  const [editPrice, setEditPrice] = useState('');
+  const [saving, setSaving] = useState(false);
   const merchantMap = Object.fromEntries(merchants.map(m => [m.id, m]));
 
   const ACTION_LABELS = {
-    MERCHANT_REGISTERED: { label: 'Registered',   cls: 'badge-blue'   },
-    MERCHANT_APPROVED:   { label: 'Approved',      cls: 'badge-green'  },
-    MERCHANT_REJECTED:   { label: 'Rejected',      cls: 'badge-red'    },
-    SALE:                { label: 'Sale',           cls: 'badge-yellow' },
-    SALE_UNDONE:         { label: 'Sale Undone',    cls: 'badge-red'    },
-    ORGANIZER_SALE:      { label: 'Organizer Sale', cls: 'badge-purple' },
+    MERCHANT_REGISTERED: { label: 'Registered',     cls: 'badge-blue'   },
+    MERCHANT_APPROVED:   { label: 'Approved',        cls: 'badge-green'  },
+    MERCHANT_REJECTED:   { label: 'Rejected',        cls: 'badge-red'    },
+    SALE:                { label: 'Sale',             cls: 'badge-yellow' },
+    SALE_UNDONE:         { label: 'Sale Undone',      cls: 'badge-red'    },
+    ORGANIZER_SALE:      { label: 'Organizer Sale',   cls: 'badge-purple' },
+    PRICE_EDITED:        { label: 'Price Edited',     cls: 'badge-blue'   },
   };
 
-  const filtered = auditLog.filter(e => {
+  const filteredLog = auditLog.filter(e => {
     if (!filter) return true;
     const merchant = merchantMap[e.merchant_id];
     return (
@@ -785,57 +815,198 @@ function AuditLogTab({ auditLog, merchants }) {
     );
   });
 
+  const activeSales = (allSales || []).filter(s => !s.is_undone);
+  const filteredSales = activeSales.filter(s => {
+    if (!filter) return true;
+    const merchant = merchantMap[s.merchant_id];
+    return (
+      s.item_name.toLowerCase().includes(filter.toLowerCase()) ||
+      merchant?.shop_name.toLowerCase().includes(filter.toLowerCase()) ||
+      merchant?.full_name.toLowerCase().includes(filter.toLowerCase())
+    );
+  }).sort((a, b) => new Date(b.sold_at) - new Date(a.sold_at));
+
+  const startEditPrice = (sale) => {
+    setEditingSaleId(sale.id);
+    setEditPrice(sale.unit_price);
+  };
+
+  const savePriceEdit = async (sale) => {
+    const newUnitPrice = parseFloat(editPrice);
+    if (isNaN(newUnitPrice) || newUnitPrice < 0) { toast.error('Enter a valid price'); return; }
+    if (newUnitPrice === parseFloat(sale.unit_price)) { setEditingSaleId(null); return; }
+
+    setSaving(true);
+    const newTotal = newUnitPrice * sale.quantity;
+    const oldUnitPrice = sale.unit_price;
+    const oldTotal = sale.total_price;
+
+    const { error } = await supabase.from('fm_sales').update({
+      unit_price: newUnitPrice,
+      total_price: newTotal,
+    }).eq('id', sale.id);
+
+    if (error) {
+      toast.error('Failed to update price: ' + error.message);
+      setSaving(false);
+      return;
+    }
+
+    await logAudit(event.id, sale.merchant_id, 'PRICE_EDITED', {
+      sale_id: sale.id,
+      item_name: sale.item_name,
+      old_price: parseFloat(oldUnitPrice).toFixed(2),
+      new_price: newUnitPrice.toFixed(2),
+      old_total: parseFloat(oldTotal).toFixed(2),
+      new_total: newTotal.toFixed(2),
+    });
+
+    setSaving(false);
+    setEditingSaleId(null);
+    toast.success('Price updated — revenue totals recalculated');
+    onRefresh();
+  };
+
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '1rem', color: 'var(--text-2)' }}>Audit Log</h2>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button className={`btn btn-sm ${view === 'log' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('log')}>Activity Log</button>
+          <button className={`btn btn-sm ${view === 'sales' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('sales')}>Sales Ledger</button>
+        </div>
         <div style={{ position: 'relative', width: 260 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
-          <input placeholder="Filter by action or merchant…" value={filter} onChange={e => setFilter(e.target.value)} style={{ paddingLeft: '2rem' }} />
+          <input placeholder={view === 'log' ? 'Filter by action or merchant…' : 'Filter by item or merchant…'} value={filter} onChange={e => setFilter(e.target.value)} style={{ paddingLeft: '2rem' }} />
         </div>
       </div>
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Time</th><th>Action</th><th>Merchant</th><th>Details</th></tr></thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={4}><div className="empty-state" style={{ padding: '2rem' }}>No audit entries found</div></td></tr>
-              )}
-              {filtered.map(entry => {
-                const merchant = merchantMap[entry.merchant_id];
-                const meta = ACTION_LABELS[entry.action] || { label: entry.action, cls: 'badge-blue' };
-                const details = entry.details || {};
-                return (
-                  <tr key={entry.id}>
-                    <td style={{ color: 'var(--text-3)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                      {new Date(entry.created_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
-                    <td style={{ fontSize: '0.8125rem' }}>
-                      {merchant ? (
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>{merchant.shop_name}</div>
-                          <div style={{ color: 'var(--text-3)', fontSize: '0.75rem' }}>{merchant.full_name}</div>
-                        </div>
-                      ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
-                      {details.total != null && `₱${parseFloat(details.total).toFixed(2)}`}
-                      {details.items != null && ` · ${details.items} item${details.items !== 1 ? 's' : ''}`}
-                      {details.shop_name && `"${details.shop_name}"`}
-                      {details.sale_id && `Sale #${String(details.sale_id).slice(0, 8)}`}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+      {/* ── ACTIVITY LOG ── */}
+      {view === 'log' && (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Time</th><th>Action</th><th>Merchant</th><th>Details</th></tr></thead>
+              <tbody>
+                {filteredLog.length === 0 && (
+                  <tr><td colSpan={4}><div className="empty-state" style={{ padding: '2rem' }}>No audit entries found</div></td></tr>
+                )}
+                {filteredLog.map(entry => {
+                  const merchant = merchantMap[entry.merchant_id];
+                  const meta = ACTION_LABELS[entry.action] || { label: entry.action, cls: 'badge-blue' };
+                  const details = entry.details || {};
+                  return (
+                    <tr key={entry.id}>
+                      <td style={{ color: 'var(--text-3)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                        {new Date(entry.created_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
+                      <td style={{ fontSize: '0.8125rem' }}>
+                        {merchant ? (
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{merchant.shop_name}</div>
+                            <div style={{ color: 'var(--text-3)', fontSize: '0.75rem' }}>{merchant.full_name}</div>
+                          </div>
+                        ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                      </td>
+                      <td style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
+                        {entry.action === 'PRICE_EDITED' ? (
+                          <span>
+                            <strong style={{ color: 'var(--text-2)' }}>{details.item_name}</strong>: ₱{details.old_price} → <span style={{ color: 'var(--accent)', fontWeight: 600 }}>₱{details.new_price}</span>
+                          </span>
+                        ) : (
+                          <>
+                            {details.total != null && `₱${parseFloat(details.total).toFixed(2)}`}
+                            {details.items != null && ` · ${details.items} item${details.items !== 1 ? 's' : ''}`}
+                            {details.shop_name && ` "${details.shop_name}"`}
+                            {details.price_overrides && (
+                              <div style={{ marginTop: '0.2rem', color: 'var(--accent)' }}>
+                                {details.price_overrides.map((o, i) => <div key={i}>↳ {o}</div>)}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border)', fontSize: '0.8125rem', color: 'var(--text-3)' }}>
+            Showing {filteredLog.length} of {auditLog.length} entries (last 100)
+          </div>
         </div>
-        <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border)', fontSize: '0.8125rem', color: 'var(--text-3)' }}>
-          Showing {filtered.length} of {auditLog.length} entries (last 100)
+      )}
+
+      {/* ── SALES LEDGER ── */}
+      {view === 'sales' && (
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-3)' }}>
+            Click any price to edit it retroactively. Revenue totals recalculate automatically and the change is logged.
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Time</th><th>Item</th><th>Merchant</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Payment</th></tr></thead>
+              <tbody>
+                {filteredSales.length === 0 && (
+                  <tr><td colSpan={7}><div className="empty-state" style={{ padding: '2rem' }}>No sales recorded</div></td></tr>
+                )}
+                {filteredSales.map(sale => {
+                  const merchant = merchantMap[sale.merchant_id];
+                  const isEditing = editingSaleId === sale.id;
+                  return (
+                    <tr key={sale.id}>
+                      <td style={{ color: 'var(--text-3)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                        {new Date(sale.sold_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ fontWeight: 500, color: 'var(--text)' }}>{sale.item_name}</td>
+                      <td style={{ fontSize: '0.8125rem' }}>{merchant?.shop_name || '—'}</td>
+                      <td>{sale.quantity}</td>
+                      <td>
+                        {isEditing ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ fontSize: '0.75rem' }}>₱</span>
+                            <input
+                              type="number" step="0.01" min="0" autoFocus
+                              value={editPrice}
+                              onChange={e => setEditPrice(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') savePriceEdit(sale); if (e.key === 'Escape') setEditingSaleId(null); }}
+                              style={{ width: 80, padding: '0.2rem 0.4rem', fontSize: '0.8125rem' }}
+                            />
+                          </div>
+                        ) : (
+                          <span onClick={() => startEditPrice(sale)} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            ₱{parseFloat(sale.unit_price).toFixed(2)} <Edit2 size={11} style={{ opacity: 0.5 }} />
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                        ₱{isEditing
+                          ? ((parseFloat(editPrice) || 0) * sale.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2 })
+                          : parseFloat(sale.total_price).toLocaleString('en-PH', { minimumFractionDigits: 2 })
+                        }
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <div style={{ display: 'flex', gap: '0.3rem' }}>
+                            <button className="btn btn-primary btn-sm" onClick={() => savePriceEdit(sale)} disabled={saving}><Check size={12} /></button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditingSaleId(null)}><X size={12} /></button>
+                          </div>
+                        ) : (
+                          <span className={`badge ${sale.payment_method === 'cash' ? 'badge-green' : sale.payment_method === 'card' ? 'badge-blue' : 'badge-purple'}`}>{sale.payment_method}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border)', fontSize: '0.8125rem', color: 'var(--text-3)' }}>
+            Showing {filteredSales.length} of {activeSales.length} active sales
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
