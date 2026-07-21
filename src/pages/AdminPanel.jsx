@@ -8,7 +8,11 @@ import {
   Users, DollarSign, Bell, Settings, LogOut, Check, X, Plus,
   RefreshCw, Copy, Download, ChevronDown, ChevronUp, Eye,
   Package, ShoppingCart, Image, Search, Filter, Sun, Moon,
+<<<<<<< HEAD
   ClipboardList, RotateCcw, Edit2, ExternalLink
+=======
+  ClipboardList, RotateCcw, Edit2
+>>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad
 } from 'lucide-react';
 import ImageLightbox, { LightboxTrigger } from '../components/shared/ImageLightbox';
 
@@ -308,6 +312,7 @@ export default function AdminPanel() {
             <div className="card">
               <h3 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-2)' }}>Current Event</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+<<<<<<< HEAD
                 <SettingRow label="Event Name" value={event.name} />
                 <SettingRow label="Date" value={event.event_date} />
                 <SettingRow label="Location" value={event.location || '—'} />
@@ -341,6 +346,11 @@ export default function AdminPanel() {
                 </div>
 
                 {/* Event ID */}
+=======
+                <SettingRow label="Event Name"        value={event.name} />
+                <SettingRow label="Date"              value={event.event_date} />
+                <SettingRow label="Location"          value={event.location || '—'} />
+>>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad
                 <div>
                   <div className="form-label" style={{ marginBottom: '0.4rem' }}>Event ID (share with merchants)</div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -348,6 +358,7 @@ export default function AdminPanel() {
                     <button className="btn btn-secondary btn-sm" onClick={() => { navigator.clipboard.writeText(event.id); toast.success('Copied!'); }}><Copy size={13} /></button>
                   </div>
                 </div>
+<<<<<<< HEAD
 
                 {/* Storefront link */}
                 <div>
@@ -363,6 +374,8 @@ export default function AdminPanel() {
                   </div>
                   {!event.is_active && <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.4rem' }}>Link is shareable even when unpublished — customers will see a "Coming soon" message.</div>}
                 </div>
+=======
+>>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad
               </div>
             </div>
 
