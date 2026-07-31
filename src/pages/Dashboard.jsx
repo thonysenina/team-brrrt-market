@@ -657,44 +657,86 @@ function InventoryTab({ items, merchantId, onUpdate }) {
 
   const saveEdit = async () => {
     setSaving(true);
-    let photo_url = editData.photo_url;
-    if (editPhotoFile) {
-      if (editData.photo_url) await deleteItemPhoto(editData.photo_url);
-      const url = await uploadItemPhoto(editPhotoFile, merchantId);
-      if (url) photo_url = url;
-      else { toast.error('Photo upload failed'); setSaving(false); return; }
+    try {
+      let photo_url = editData.photo_url;
+      if (editPhotoFile) {
+        if (editData.photo_url) await deleteItemPhoto(editData.photo_url);
+        const url = await uploadItemPhoto(editPhotoFile, merchantId);
+        if (url) photo_url = url;
+        else { toast.error('Photo upload failed'); setSaving(false); return; }
+      }
+      const { error } = await supabase.from('fm_items').update({
+        name: editData.name,
+        description: editData.description,
+        price: parseFloat(editData.price),
+        quantity: parseInt(editData.quantity),
+        photo_url,
+      }).eq('id', editId);
+      if (error) throw error;
+      setEditId(null); setEditPhotoFile(null); setEditPhotoPreview(null);
+      onUpdate(); toast.success('Item updated');
+    } catch (err) {
+      console.error('saveEdit error:', err);
+      toast.error('Failed to save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
     }
-    await supabase.from('fm_items').update({ name: editData.name, description: editData.description, price: parseFloat(editData.price), quantity: parseInt(editData.quantity), photo_url }).eq('id', editId);
-    setEditId(null); setEditPhotoFile(null); setEditPhotoPreview(null);
-    setSaving(false); onUpdate(); toast.success('Item updated');
   };
 
   const deleteItem = async (item) => {
     if (!window.confirm('Delete this item?')) return;
-    if (item.photo_url) await deleteItemPhoto(item.photo_url);
-    await supabase.from('fm_items').delete().eq('id', item.id);
-    onUpdate(); toast.success('Item removed');
+    try {
+      if (item.photo_url) await deleteItemPhoto(item.photo_url);
+      const { error } = await supabase.from('fm_items').delete().eq('id', item.id);
+      if (error) throw error;
+      onUpdate(); toast.success('Item removed');
+    } catch (err) {
+      console.error('deleteItem error:', err);
+      toast.error('Failed to delete: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const removePhoto = async (item) => {
     if (!window.confirm('Remove this photo?')) return;
-    await deleteItemPhoto(item.photo_url);
-    await supabase.from('fm_items').update({ photo_url: null }).eq('id', item.id);
-    onUpdate(); toast.success('Photo removed');
+    try {
+      await deleteItemPhoto(item.photo_url);
+      const { error } = await supabase.from('fm_items').update({ photo_url: null }).eq('id', item.id);
+      if (error) throw error;
+      onUpdate(); toast.success('Photo removed');
+    } catch (err) {
+      console.error('removePhoto error:', err);
+      toast.error('Failed to remove photo: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const addItem = async () => {
     if (!newItem.name || !newItem.price || !newItem.quantity) { toast.error('Name, price and quantity are required'); return; }
     setSaving(true);
-    let photo_url = null;
-    if (newPhotoFile) {
-      photo_url = await uploadItemPhoto(newPhotoFile, merchantId);
-      if (!photo_url) { toast.error('Photo upload failed'); setSaving(false); return; }
+    try {
+      let photo_url = null;
+      if (newPhotoFile) {
+        photo_url = await uploadItemPhoto(newPhotoFile, merchantId);
+        if (!photo_url) { toast.error('Photo upload failed'); setSaving(false); return; }
+      }
+      const { error } = await supabase.from('fm_items').insert({
+        merchant_id: merchantId,
+        name: newItem.name.trim(),
+        description: newItem.description.trim(),
+        price: parseFloat(newItem.price),
+        quantity: parseInt(newItem.quantity),
+        quantity_sold: 0,
+        photo_url,
+      });
+      if (error) throw error;
+      setNewItem({ name: '', description: '', price: '', quantity: '' });
+      setNewPhotoFile(null); setNewPhotoPreview(null); setShowAdd(false);
+      onUpdate(); toast.success('Item added');
+    } catch (err) {
+      console.error('addItem error:', err);
+      toast.error('Failed to add item: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
     }
-    await supabase.from('fm_items').insert({ merchant_id: merchantId, name: newItem.name.trim(), description: newItem.description.trim(), price: parseFloat(newItem.price), quantity: parseInt(newItem.quantity), quantity_sold: 0, photo_url });
-    setNewItem({ name: '', description: '', price: '', quantity: '' });
-    setNewPhotoFile(null); setNewPhotoPreview(null); setShowAdd(false);
-    setSaving(false); onUpdate(); toast.success('Item added');
   };
 
   return (
