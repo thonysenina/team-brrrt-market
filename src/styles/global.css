@@ -341,7 +341,6 @@ tbody tr:hover td { background: var(--bg-3); }
 [data-theme="light"] tbody tr:hover td {
   background: var(--bg-3);
 }
-<<<<<<< HEAD
 
 /* ── TEAL HIGHLIGHT ── */
 :root {
@@ -396,5 +395,3 @@ tbody tr:hover td { background: var(--bg-3); }
 @media print {
   .store-header, .store-filters { display: none; }
 }
-=======
->>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad

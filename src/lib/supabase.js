@@ -41,11 +41,19 @@ function needsConversion(file) {
   return false;
 }
 
+// Longest-side cap applied to every uploaded photo. Thumbnails across
+// the app render at 32-36px, and even the storefront/lightbox full view
+// doesn't need more than this — keeping originals uncapped was the main
+// driver of Supabase Cached Egress usage (full-res phone photos re-served
+// on every page view across POS, Dashboard, AdminPanel, and Storefront).
+const MAX_DIMENSION = 1200; // px
+
 /**
  * Converts a HEIC/HEIF file to JPEG using heic2any (lazy-loaded).
  * For other unrecognised types, draws through a canvas to force a
  * decodable JPEG — this also works for library photos on iOS that
  * arrive with a blank MIME type but are actually valid images.
+ * Both paths are downsized to MAX_DIMENSION before returning.
  */
 async function toJpeg(file) {
   // Try heic2any for HEIC/HEIF first
@@ -55,28 +63,46 @@ async function toJpeg(file) {
       const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
       const resultBlob = Array.isArray(blob) ? blob[0] : blob;
       const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
-      return new File([resultBlob], newName, { type: 'image/jpeg' });
+      // Route through the same resize step below rather than returning
+      // the full-resolution HEIC-derived JPEG directly.
+      return await resizeToJpeg(new File([resultBlob], newName, { type: 'image/jpeg' }));
     } catch (err) {
       console.warn('heic2any failed, falling back to canvas:', err);
     }
   }
 
   // Canvas fallback — works for any image the OS can decode,
-  // including library photos with missing MIME types on iOS
+  // including library photos with missing MIME types on iOS.
+  return resizeToJpeg(file);
+}
+
+/**
+ * Draws a file through a canvas, downsizing to MAX_DIMENSION on the
+ * longest side and re-encoding as JPEG. Used for both the HEIC path
+ * and the general fallback path so every upload is capped consistently.
+ */
+function resizeToJpeg(file) {
   return new Promise((resolve) => {
     const img = new window.Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
+      let { naturalWidth: width, naturalHeight: height } = img;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        const scale = MAX_DIMENSION / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
       canvas.toBlob(blob => {
         if (!blob) { resolve(file); return; }
         const newName = file.name.replace(/\.[^.]+$/, '.jpg');
         resolve(new File([blob], newName, { type: 'image/jpeg' }));
-      }, 'image/jpeg', 0.88);
+      }, 'image/jpeg', 0.8);
     };
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
@@ -157,7 +183,14 @@ export async function uploadItemPhoto(file, merchantId) {
 
   const { error } = await supabase.storage
     .from('item-photos')
-    .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type || 'image/jpeg' });
+    .upload(path, uploadFile, {
+      upsert: true,
+      contentType: uploadFile.type || 'image/jpeg',
+      // Path already includes Date.now(), so it's never reused — safe to
+      // cache for a year instead of the 1-hour default, cutting repeat
+      // Cached Egress hits across POS/Dashboard/AdminPanel/Storefront.
+      cacheControl: '31536000',
+    });
 
   if (error) {
     console.error('Photo upload error:', error.message);

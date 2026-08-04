@@ -7,10 +7,7 @@ import Landing from './pages/Landing';
 import Registration from './pages/Registration';
 import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
-<<<<<<< HEAD
 import Storefront from './pages/Storefront';
-=======
->>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad
 import './styles/global.css';
 
 export default function App() {
@@ -51,10 +48,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-<<<<<<< HEAD
           <Route path="/store/:eventId" element={<Storefront />} />
-=======
->>>>>>> 618578eb078780c9519554a9128c9e6f6c4031ad
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
