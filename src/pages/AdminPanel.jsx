@@ -81,6 +81,18 @@ export default function AdminPanel() {
     toast.success(`Merchant ${status}`);
   };
 
+  // Organizer-assisted PIN reset for a merchant who has lost theirs.
+  const resetMerchantPin = async (merchantId, newPin) => {
+    const pin = (newPin || '').trim();
+    if (pin.length < 4) { toast.error('PIN must be at least 4 characters'); return false; }
+    const { error } = await supabase.from('fm_merchants').update({ pin }).eq('id', merchantId);
+    if (error) { toast.error('Could not reset PIN'); return false; }
+    await logAudit(event.id, merchantId, 'MERCHANT_PIN_RESET');
+    toast.success('Merchant PIN reset. Share the new PIN with them directly.');
+    fetchData();
+    return true;
+  };
+
   const [annMsg, setAnnMsg] = useState('');
   const sendAnnouncement = async () => {
     if (!annMsg.trim()) return;
@@ -247,7 +259,8 @@ export default function AdminPanel() {
                   return next;
                 })}
                 onApprove={() => updateStatus(m.id, 'approved')}
-                onReject={() => updateStatus(m.id, 'rejected')} />
+                onReject={() => updateStatus(m.id, 'rejected')}
+                onResetPin={(newPin) => resetMerchantPin(m.id, newPin)} />
             ))}
           </div>
         )}
@@ -1057,8 +1070,14 @@ function AuditLogTab({ auditLog, merchants, allSales, event, onRefresh }) {
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-function MerchantCard({ merchant, selected, onSelect, onApprove, onReject }) {
+function MerchantCard({ merchant, selected, onSelect, onApprove, onReject, onResetPin }) {
   const [expanded, setExpanded] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const submitReset = async () => {
+    const ok = await onResetPin(newPin);
+    if (ok) { setNewPin(''); setResetting(false); }
+  };
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', border: selected ? '1px solid var(--accent-border)' : '1px solid var(--border)', background: selected ? 'var(--accent-dim)' : 'var(--bg-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -1085,6 +1104,18 @@ function MerchantCard({ merchant, selected, onSelect, onApprove, onReject }) {
         <div className="animate-fade" style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', fontSize: '0.8125rem', color: 'var(--text-2)' }}>
           {merchant.description && <p style={{ marginBottom: '0.5rem' }}>{merchant.description}</p>}
           <p style={{ color: 'var(--text-3)' }}>Registered: {new Date(merchant.created_at).toLocaleString('en-PH')}</p>
+          <div style={{ marginTop: '0.75rem' }}>
+            {!resetting ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => setResetting(true)}>Reset PIN</button>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input type="password" placeholder="New PIN (min. 4)" value={newPin}
+                  onChange={e => setNewPin(e.target.value)} style={{ maxWidth: 180 }} />
+                <button className="btn btn-primary btn-sm" onClick={submitReset} disabled={newPin.trim().length < 4}>Save PIN</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setResetting(false); setNewPin(''); }}>Cancel</button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
